@@ -1,0 +1,23 @@
+{
+  "name": "motion-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Code-rendered motion design with Claude Code: seek(t) compositions, Playwright + ffmpeg renderer, synthesized sound and a self-critique loop.",
+  "type": "module",
+  "scripts": {
+    "new": "node .claude/skills/motion-reel/scripts/new-film.mjs",
+    "render": "node .claude/skills/motion-reel/scripts/render.mjs",
+    "review": "node .claude/skills/motion-reel/scripts/review.mjs",
+    "preview": "node .claude/skills/motion-reel/scripts/serve.mjs",
+    "capture": "node .claude/skills/motion-reel/scripts/capture.mjs",
+    "reference": "node .claude/skills/motion-reel/scripts/reference.mjs",
+    "beats": "python3 .claude/skills/motion-reel/scripts/beats.py",
+    "demo": "node .claude/skills/motion-reel/scripts/render.mjs demo --format all && node .claude/skills/motion-reel/scripts/review.mjs demo --format 16x9"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  },
+  "engines": {
+    "node": ">=20.6"
+  }
+}

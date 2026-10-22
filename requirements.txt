@@ -1,0 +1,4 @@
+# beats.py needs numpy (and ffmpeg on PATH). librosa is optional: when it is
+# installed, beats.py uses it for tempo and beat tracking.
+numpy>=1.24
+# librosa>=0.10

@@ -1,0 +1,71 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>{{TITLE}}</title>
+<style>
+  /* Ship licensed fonts in ../assets/fonts and declare them here, e.g.
+     @font-face { font-family: 'Display'; src: url('../assets/fonts/Display-Bold.woff2') format('woff2'); font-weight: 700; }
+     The runtime waits for every declared face; a missing file stops the render. */
+  #stage { background: #121212; color: #e6e6e6; font-family: system-ui, sans-serif; }
+  .el { position: absolute; left: 0; top: 0; }
+  #shape { box-sizing: border-box; border: 3px dashed #5a5a5a; }
+  #label { font: 600 30px ui-monospace, Menlo, monospace; color: #8a8a8a; white-space: nowrap; }
+  #note { font: 500 36px/1.35 system-ui, sans-serif; color: #6f6f6f; max-width: 80%; }
+  [data-orientation="portrait"] #note { font-size: 48px; }
+  #cursor { width: 44px; height: 44px; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="shape" class="el"></div>
+  <div id="label" class="el"></div>
+  <div id="note" class="el">Template film. Replace it with your shot list —<br>every pixel here is a function of t.</div>
+  <svg id="cursor" class="el" viewBox="0 0 24 24"><path d="M4 2l16 9.5-7 1.6-3.4 7.4z" fill="#fff" stroke="#000" stroke-width="1.4" stroke-linejoin="round"/></svg>
+</div>
+<script type="module">
+import { defineFilm } from '/_studio/runtime.mjs';
+import { morph, cursorPath, feel } from '/_studio/motion.mjs';
+import tl from './timeline.mjs';
+
+const $ = (id) => document.getElementById(id);
+const shape = $('shape'), label = $('label'), note = $('note'), cursor = $('cursor');
+
+// States of the one shape. Sizes are fractions of the short side so every
+// format reads; x/y are fractions of the frame (the shape's center).
+const states = {
+  dot: { w: 0.07, h: 0.07, r: 0.035, x: 0.5, y: 0.5, bg: '#262626' },
+  pill: { w: 0.44, h: 0.12, r: 0.06, x: 0.5, y: 0.5, bg: '#333333' },
+  card: { w: 0.66, h: 0.44, r: 0.03, x: 0.5, y: 0.47, bg: '#2b2b2b' },
+  wide: { w: 0.9, h: 0.3, r: 0.02, x: 0.5, y: 0.44, bg: '#303030' },
+};
+
+defineFilm({
+  duration: tl.duration,
+  fps: tl.fps,
+  formats: tl.formats,
+  timeline: { shots: tl.shots, cues: tl.cues },
+  audio: { score: './score.mjs' },
+  loop: true,
+
+  seek(t, { width: W, height: H }) {
+    const S = Math.min(W, H);
+    const m = morph(t, tl.steps, states, { default: feel.panel, x: feel.camera, y: feel.camera });
+    const w = m.w * S, h = m.h * S;
+    // a press squashes the shape for a moment: a pure function of time since each click
+    const press = tl.clicks.reduce((a, c) => a + (t >= c ? Math.exp(-(t - c) * 14) : 0), 0);
+    Object.assign(shape.style, {
+      width: `${w}px`, height: `${h}px`, borderRadius: `${m.r * S}px`, background: m.bg,
+      transform: `translate(${m.x * W - w / 2}px, ${m.y * H - h / 2}px) scale(${1 - 0.05 * press})`,
+    });
+    const shot = tl.shots.find((s) => t >= s.start && t < s.end) || tl.shots.at(-1);
+    label.textContent = `${shot.name} · ${m.state} · ${t.toFixed(2)}s`;
+    label.style.transform = `translate(${W * 0.06}px, ${H * 0.06}px)`;
+    note.style.transform = `translate(${W * 0.06}px, ${H * 0.8}px)`;
+    const [cx, cy] = cursorPath(t, tl.cursor.map(([tc, x, y]) => [tc, x * W, y * H]));
+    cursor.style.transform = `translate(${cx}px, ${cy}px)`;
+  },
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,466 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>seek(t) — the motion-reel demo</title>
+<style>
+  @font-face { font-family: 'Inter Display'; src: url('../assets/fonts/InterDisplay-Bold.woff2') format('woff2'); font-weight: 700; }
+  @font-face { font-family: 'Inter Text'; src: url('../assets/fonts/Inter-Medium.woff2') format('woff2'); font-weight: 500; }
+  @font-face { font-family: 'JB Mono'; src: url('../assets/fonts/JetBrainsMono-Regular.woff2') format('woff2'); font-weight: 400; }
+  @font-face { font-family: 'JB Mono'; src: url('../assets/fonts/JetBrainsMono-Bold.woff2') format('woff2'); font-weight: 700; }
+
+  :root { --paper: #F1EEE7; --ink: #111111; --accent: #FF4F1A; }
+  #stage { background: var(--paper); color: var(--ink); font-family: 'Inter Text', sans-serif; }
+  .abs { position: absolute; left: 0; top: 0; }
+  .mono { font-family: 'JB Mono', monospace; }
+
+  .gline { position: absolute; top: 0; width: 2px; background: rgba(17, 17, 17, 0.07); }
+
+  #headline { font-family: 'Inter Display', sans-serif; font-weight: 700; letter-spacing: -0.045em; line-height: 0.98; }
+  #headline .line { overflow: hidden; padding: 0 0.05em 0.08em 0; margin-bottom: -0.08em; }
+  #headline .line span { display: inline-block; white-space: nowrap; }
+
+  #caption { white-space: pre-wrap; line-height: 1.3; }
+  .caret { display: inline-block; width: 0.55em; height: 1.05em; margin-left: 0.06em; vertical-align: -0.17em; background: var(--accent); }
+
+  #box { overflow: hidden; }
+  #scrub { position: absolute; inset: 0; }
+  #track { position: absolute; height: 3px; background: rgba(241, 238, 231, 0.28); border-radius: 2px; }
+  .tick { position: absolute; width: 2px; background: rgba(241, 238, 231, 0.35); }
+  #head { position: absolute; width: 4px; background: var(--accent); border-radius: 2px; }
+  #knob { position: absolute; border-radius: 50%; background: var(--accent); }
+  #readout { color: var(--ink); font-weight: 700; white-space: nowrap; line-height: 1; }
+
+  .tile { position: absolute; }
+  .tile .tl { position: absolute; left: 0; color: rgba(241, 238, 231, 0.62); white-space: nowrap; }
+  .ring { position: absolute; border: 4px solid var(--accent); box-sizing: border-box; }
+  #badge { position: absolute; white-space: nowrap; font-weight: 700; border-radius: 999px; }
+  #beam { position: absolute; width: 4px; background: var(--accent); border-radius: 2px; }
+
+  .mini { position: absolute; overflow: hidden; background: var(--paper); box-sizing: border-box; }
+  .mini .bar { position: absolute; left: 0; top: 0; background: var(--ink); }
+  .mini .shape { position: absolute; left: 0; top: 0; }
+  .frame-label { position: absolute; color: var(--ink); white-space: nowrap; font-weight: 700; }
+
+  #ctaText { position: absolute; white-space: nowrap; font-weight: 700; color: var(--ink); line-height: 1; }
+  #sign { white-space: nowrap; color: rgba(17, 17, 17, 0.7); }
+  #cursor { overflow: visible; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="grid" class="abs"></div>
+  <div id="headline" class="abs"></div>
+  <div id="caption" class="abs mono"><span class="txt"></span><i class="caret"></i></div>
+  <div id="preview" class="mini"></div>
+  <div id="fmtA" class="mini"></div>
+  <div id="fmtB" class="mini"></div>
+  <div id="labels" class="abs"></div>
+  <div id="box" class="abs">
+    <div id="scrub"><div id="track"></div><div id="ticks"></div><div id="head"></div><div id="knob"></div></div>
+    <div id="tiles"></div>
+    <div id="ctaText" class="mono"><span class="txt"></span><i class="caret"></i></div>
+  </div>
+  <div id="readout" class="abs mono"></div>
+  <div id="sign" class="abs"></div>
+  <svg id="cursor" class="abs" viewBox="0 0 24 24"><path d="M4.5 2.5l15.5 9.2-6.9 1.6-3.3 7.2z" fill="#111111" stroke="#F1EEE7" stroke-width="1.6" stroke-linejoin="round"/></svg>
+</div>
+<script type="module">
+import { defineFilm } from '/_studio/runtime.mjs';
+import { morph, track, spring, feel, ease, progress, clamp, lerp, mixColor, typeTimes, typed, cursorPath } from '/_studio/motion.mjs';
+import tl from './timeline.mjs';
+
+const $ = (s, el = document) => el.querySelector(s);
+const PAPER = '#F1EEE7', INK = '#111111', ACCENT = '#FF4F1A';
+const D = tl.duration;
+const drag = { freq: 2.6, damping: 0.92 }; // a hand dragging a playhead
+
+// ── layout: every number that depends on the format lives here ─────────────
+// Vertical gets bigger type and fewer columns; nothing sits under the
+// platform's caption/button zones (bottom 420 px, right 140 px, top 220 px).
+
+function layout(W, H) {
+  const P = H > W;
+  const M = P ? 88 : 128;
+  const L = {
+    P, W, H, M,
+    cols: P ? 6 : 12,
+    head: P ? { x: M, y: 600, size: 138 } : { x: M, y: 250, size: 168 },
+    caption: P ? { x: M, y: 290, size: 42, w: W - 2 * M } : { x: M, y: 190, size: 48, w: 780 },
+    preview: P ? { cx: W / 2, cy: 845, w: 380, h: 676 } : { cx: 1336, cy: 440, w: 720, h: 405 },
+    scrubber: P ? { cx: (M + W - 160) / 2, cy: 1330, w: W - 160 - M, h: 104 } : { cx: W / 2, cy: 850, w: W - 2 * M, h: 104 },
+    sheet: P ? { cx: (M + W - 160) / 2, cy: 960, w: W - 160 - M, h: 1000 } : { cx: W / 2, cy: 610, w: W - 2 * M, h: 470 },
+    tileCols: P ? 4 : 6,
+    frameMain: P ? { cx: W / 2, cy: 770, w: 340, h: 604 } : { cx: W / 2, cy: 610, w: 760, h: 428 },
+    cta: P ? { cx: W / 2, cy: 820, w: W - 2 * M, h: 132 } : { cx: W / 2, cy: 520, w: 1120, h: 140 },
+    ctaSize: P ? 38 : 50,
+    sign: P ? { y: 950, size: 40 } : { y: 652, size: 46 },
+    dot: P ? { x: 0.76, y: 0.25, d: 72 } : { x: 0.79, y: 0.38, d: 64 },
+    cursor: P ? 54 : 42,
+  };
+  // the two extra format frames sit either side of the main one (or below it on vertical)
+  L.frameA = P ? { cx: W / 2 - 200, cy: 1270, w: 360, h: 203, name: '16:9' } : { cx: W / 2 - 636, cy: 624, w: 400, h: 400, name: '1:1' };
+  L.frameB = P ? { cx: W / 2 + 215, cy: 1270, w: 270, h: 270, name: '1:1' } : { cx: W / 2 + 548, cy: 624, w: 225, h: 400, name: '9:16' };
+  L.frameMain.name = P ? '9:16' : '16:9';
+  return L;
+}
+
+// The one shape, state by state (centers in px).
+function statesFor(L) {
+  const { W, H } = L;
+  const dot = { x: L.dot.x * W, y: L.dot.y * H, w: L.dot.d, h: L.dot.d, r: L.dot.d / 2, bg: ACCENT };
+  return {
+    hidden: { ...dot, w: 0, h: 0, r: 0 },
+    dot,
+    low: { ...dot, y: L.scrubber.cy },
+    scrubber: { x: L.scrubber.cx, y: L.scrubber.cy, w: L.scrubber.w, h: L.scrubber.h, r: L.scrubber.h / 2, bg: INK },
+    sheet: { x: L.sheet.cx, y: L.sheet.cy, w: L.sheet.w, h: L.sheet.h, r: 28, bg: INK },
+    frame: { x: L.frameMain.cx, y: L.frameMain.cy, w: L.frameMain.w, h: L.frameMain.h, r: 10, bg: INK },
+    cta: { x: L.cta.cx, y: L.cta.cy, w: L.cta.w, h: L.cta.h, r: L.cta.h / 2, bg: ACCENT },
+  };
+}
+const steps = tl.steps.map(([t, s]) => [t, s, s === 'dot' && t < 1 ? feel.headline : undefined]);
+// Geometry glides on springs; color cuts on the beat. Tweening ink into the
+// accent passes through mud, so the fill changes in two frames instead.
+const CUT = { freq: 60, damping: 1 }; // 99% of the way in one frame
+const FEELS = { default: feel.panel, bg: CUT };
+
+// ── mini frames: this film, drawn small, at any time tt ────────────────────
+// Used by the scrub preview, the contact sheet and the format frames. It is
+// the same morph as the big shape, so the tiles are the film's own frames.
+
+const LINE_W = [0.33, 0.69, 0.43]; // headline line widths as a share of the text column
+function makeMini(root) {
+  root.innerHTML = '<div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="shape"></div>';
+  return { root, bars: [...root.querySelectorAll('.bar')], shape: root.querySelector('.shape') };
+}
+function drawMini(m, tt, FW, FH, x, y, w, h, { border = 0, alpha = 1 } = {}) {
+  const L = layout(FW, FH);
+  const k = w / FW;
+  Object.assign(m.root.style, { width: `${w}px`, height: `${h}px`, transform: `translate(${x - w / 2}px, ${y - h / 2}px)`, border: border ? `${border}px solid ${INK}` : 'none', opacity: alpha });
+  m.bars.forEach((b, i) => {
+    const show = tt >= tl.headline.at[i] && tt < tl.headline.out + 0.15;
+    const bh = L.head.size * 0.62 * k;
+    Object.assign(b.style, {
+      display: show ? 'block' : 'none',
+      width: `${LINE_W[i] * (FW - 2 * L.M) * k}px`, height: `${bh}px`, borderRadius: `${bh * 0.12}px`,
+      transform: `translate(${L.head.x * k}px, ${(L.head.y + i * L.head.size * 0.98 + L.head.size * 0.2) * k}px)`,
+    });
+  });
+  const s = morph(tt, steps, statesFor(L), FEELS);
+  Object.assign(m.shape.style, {
+    width: `${Math.max(0, s.w) * k}px`, height: `${Math.max(0, s.h) * k}px`, borderRadius: `${s.r * k}px`, background: s.bg,
+    transform: `translate(${(s.x - s.w / 2) * k}px, ${(s.y - s.h / 2) * k}px)`,
+  });
+}
+
+// ── build the DOM once per format ───────────────────────────────────────────
+
+let L, minis, tiles, gridLines, headLines, captionTimes, ctaTimes;
+
+function setup({ width: W, height: H }) {
+  L = layout(W, H);
+  const grid = $('#grid');
+  gridLines = [];
+  for (let i = 0; i <= L.cols; i++) {
+    const g = document.createElement('div');
+    g.className = 'gline';
+    g.style.left = `${Math.round(L.M + (i * (W - 2 * L.M)) / L.cols - 1)}px`;
+    grid.appendChild(g);
+    gridLines.push(g);
+  }
+  const head = $('#headline');
+  head.style.fontSize = `${L.head.size}px`;
+  head.style.transform = `translate(${L.head.x}px, ${L.head.y}px)`;
+  headLines = tl.headline.lines.map((text) => {
+    const line = document.createElement('div');
+    line.className = 'line';
+    line.innerHTML = `<span>${text}</span>`;
+    head.appendChild(line);
+    return line.firstChild;
+  });
+  const cap = $('#caption');
+  Object.assign(cap.style, { fontSize: `${L.caption.size}px`, width: `${L.caption.w}px` });
+  captionTimes = tl.captions.map((c, i) => typeTimes(c.text, c.t, tl.captionCps, 11 + i));
+  ctaTimes = typeTimes(tl.cta.text, tl.cta.at, tl.cta.cps, 5);
+  $('#ctaText').style.fontSize = `${L.ctaSize}px`;
+  $('#readout').style.fontSize = `${L.P ? 32 : 34}px`;
+  $('#sign').style.fontSize = `${L.sign.size}px`;
+  $('#sign').textContent = tl.sign.text;
+
+  const ticks = $('#ticks');
+  for (let s = 0; s <= D; s++) {
+    const tk = document.createElement('div');
+    tk.className = 'tick';
+    tk.dataset.s = s;
+    ticks.appendChild(tk);
+  }
+  const mainEl = document.createElement('div');
+  mainEl.className = 'mini';
+  $('#box').appendChild(mainEl);
+  minis = { preview: makeMini($('#preview')), a: makeMini($('#fmtA')), b: makeMini($('#fmtB')), main: makeMini(mainEl) };
+  const tilesEl = $('#tiles');
+  tiles = Array.from({ length: tl.tiles.count }, (_, i) => {
+    const el = document.createElement('div');
+    el.className = 'tile';
+    el.innerHTML = '<div class="mini"></div><div class="tl mono"></div>';
+    tilesEl.appendChild(el);
+    return { el, mini: makeMini(el.firstChild), label: el.lastChild, tt: (i * D) / tl.tiles.count };
+  });
+  tilesEl.insertAdjacentHTML('beforeend', '<div class="ring"></div><div id="badge" class="mono"></div><div id="beam"></div>');
+  const labels = $('#labels');
+  for (const f of [L.frameMain, L.frameA, L.frameB]) {
+    const d = document.createElement('div');
+    d.className = 'frame-label mono';
+    d.textContent = f.name;
+    labels.appendChild(d);
+  }
+}
+
+// ── helpers ─────────────────────────────────────────────────────────────────
+
+// Where tile i sits inside a box of size bw×bh (pure: the cursor uses it too).
+function tileRect(i, bw, bh, W, H) {
+  const cols = L.tileCols, rows = Math.ceil(tl.tiles.count / cols);
+  const pad = 36, gap = 22, labelH = 30;
+  // the largest tile that fits both ways, keeping the film's aspect ratio
+  const tw = Math.min((L.sheet.w - 2 * pad - (cols - 1) * gap) / cols, ((L.sheet.h - 2 * pad - labelH - (rows - 1) * (gap + labelH)) / rows) * (W / H));
+  const th = tw * (H / W);
+  const gridW = cols * tw + (cols - 1) * gap;
+  const gridH = rows * th + (rows - 1) * (gap + labelH);
+  const ox = (bw - gridW) / 2;
+  const oy = (bh - gridH - labelH) / 2;
+  return { cx: ox + (i % cols) * (tw + gap) + tw / 2, cy: oy + Math.floor(i / cols) * (th + gap + labelH) + th / 2, tw, th };
+}
+const shotAt = (t) => tl.shots.find((s) => t >= s.start && t < s.end) || tl.shots.at(-1);
+// Hide with display:none — it hides the whole subtree, so nothing a previous
+// frame left behind inside a container can leak into this one.
+const vis = (el, on) => { el.style.display = on ? '' : 'none'; };
+// 1 between a and b with eased edges of `fade` seconds
+const windowed = (t, a, b, fade = 0.2) => Math.min(ease.outCubic(progress(t, a, fade)), 1 - ease.inCubic(progress(t, b - fade, fade)));
+const playheadAt = (t) => (t < tl.grab ? t : track(t, [[tl.grab, tl.grab], ...tl.scrub], drag));
+// piecewise-linear [time, value] keys: for things that move like machines (a scanning beam)
+const keyframesLinear = (t, keys) => {
+  if (t <= keys[0][0]) return keys[0][1];
+  for (let i = 1; i < keys.length; i++) if (t < keys[i][0]) return lerp(keys[i - 1][1], keys[i][1], (t - keys[i - 1][0]) / (keys[i][0] - keys[i - 1][0]));
+  return keys.at(-1)[1];
+};
+const fmt2 = (x) => clamp(x, 0, D).toFixed(2).padStart(5, '0');
+
+// ── the frame ───────────────────────────────────────────────────────────────
+
+function seek(t, { width: W, height: H }) {
+  // grid: draws in from the top, retracts to the bottom (the loop starts on bare paper)
+  gridLines.forEach((g, i) => {
+    const kin = ease.outCubic(progress(t, tl.grid.in + i * 0.025, 0.55));
+    const kout = ease.inCubic(progress(t, tl.grid.out + i * 0.02, 0.4));
+    g.style.top = `${kout * H}px`;
+    g.style.height = `${(kout > 0 ? 1 - kout : kin) * H}px`;
+  });
+
+  // headline: each line lands on its beat, all leave together before the scrubber forms
+  headLines.forEach((span, i) => {
+    const land = spring(t - tl.headline.at[i], feel.headline);
+    const leave = ease.inCubic(progress(t, tl.headline.out + i * 0.05, 0.28));
+    span.style.transform = `translateY(${(1 - land) * 112 - leave * 112}%)`;
+  });
+
+  // the one shape
+  const S = statesFor(L);
+  const m = morph(t, steps, S, FEELS);
+  const beatPulse = tl.headline.at.reduce((a, b) => a + (t >= b ? Math.exp(-(t - b) * 9) : 0), 0) * (m.state === 'dot' ? 1 : 0);
+  const pressAt = [...tl.scrub.map(([p]) => p), tl.defect.press];
+  const box = $('#box');
+  const bs = 1 + 0.1 * beatPulse;
+  Object.assign(box.style, {
+    width: `${Math.max(0, m.w)}px`, height: `${Math.max(0, m.h)}px`, borderRadius: `${Math.max(0, m.r)}px`, background: m.bg,
+    transform: `translate(${m.x - m.w / 2}px, ${m.y - m.h / 2}px) scale(${bs})`,
+  });
+
+  // RULE: scrubber with a live playhead; the preview shows this film at the playhead time
+  const sc = windowed(t, 2.25, 5.0, 0.18);
+  const scrub = $('#scrub');
+  scrub.style.opacity = sc;
+  vis(scrub, sc > 0);
+  const p = playheadAt(t);
+  const pad = 56;
+  const trackW = m.w - 2 * pad;
+  const px = pad + (clamp(p, 0, D) / D) * trackW;
+  Object.assign($('#track').style, { left: `${pad}px`, width: `${trackW}px`, top: `${m.h / 2 - 1.5}px` });
+  for (const tk of $('#ticks').children) {
+    const s = Number(tk.dataset.s);
+    const major = s % 4 === 0;
+    Object.assign(tk.style, { left: `${pad + (s / D) * trackW - 1}px`, top: `${m.h / 2 - (major ? 14 : 8)}px`, height: `${major ? 28 : 16}px` });
+  }
+  Object.assign($('#head').style, { left: `${px - 2}px`, top: `${m.h / 2 - 30}px`, height: '60px' });
+  const knob = 22 * (1 + 0.25 * pressAt.slice(0, 4).reduce((a, c) => a + (t >= c - 0.03 && t < tl.release ? 1 : 0), 0) / 4);
+  Object.assign($('#knob').style, { left: `${px - knob / 2}px`, top: `${m.h / 2 - knob / 2}px`, width: `${knob}px`, height: `${knob}px` });
+  // the readout floats above the playhead, clear of the cursor below it
+  const readout = $('#readout');
+  vis(readout, sc > 0);
+  readout.textContent = `seek(${fmt2(p)})`;
+  const rw = 11 * (L.P ? 32 : 34) * 0.6;
+  const rx = clamp(m.x - m.w / 2 + px - rw / 2, L.M, W - L.M - rw);
+  readout.style.transform = `translate(${rx}px, ${m.y - m.h / 2 - (L.P ? 52 : 56)}px)`;
+  readout.style.opacity = sc;
+
+  const pv = windowed(t, 2.2, 4.95, 0.25);
+  const pvScale = 0.92 + 0.08 * spring(t - 2.2, feel.panel);
+  vis(minis.preview.root, pv > 0.001);
+  if (pv > 0.001) drawMini(minis.preview, p, W, H, L.preview.cx, L.preview.cy, L.preview.w * pvScale, L.preview.h * pvScale, { border: 3, alpha: pv });
+
+  // caption: typed, then slid away when the next shot takes over
+  const ci = tl.captions.findLastIndex((c) => t >= c.t);
+  const cap = $('#caption');
+  if (ci >= 0) {
+    const c = tl.captions[ci];
+    const end = ci === 0 ? 4.85 : ci === 1 ? 8.85 : 12.6;
+    const gone = ease.inCubic(progress(t, end, 0.25));
+    const shown = typed(c.text, t, captionTimes[ci]);
+    $('.txt', cap).textContent = shown;
+    const done = shown.length === c.text.length;
+    $('.caret', cap).style.opacity = !done || Math.floor((t - c.t) / (tl.beat / 2)) % 2 === 0 ? 1 : 0;
+    const cy = ci === 0 && L.P ? L.caption.y : L.caption.y;
+    cap.style.transform = `translate(${L.caption.x}px, ${cy - gone * 40}px)`;
+    cap.style.opacity = 1 - gone;
+    vis(cap, gone < 1);
+  } else vis(cap, false);
+
+  // CRITIC: the contact sheet of this film; one tile is flagged, then fixed
+  const sh = windowed(t, 5.15, 9.12, 0.22);
+  const tilesEl = $('#tiles');
+  vis(tilesEl, sh > 0);
+  if (sh > 0) {
+    tiles.forEach((tile, i) => {
+      const { cx, cy, tw, th } = tileRect(i, m.w, m.h, W, H);
+      const tin = tl.tiles.start + i * tl.tiles.gap;
+      const k = spring(t - tin, feel.ui);
+      const a = clamp(progress(t, tin, 0.12)) * sh;
+      vis(tile.el, a > 0);
+      if (a <= 0) return;
+      drawMini(tile.mini, tile.tt, W, H, cx, cy, tw * (0.7 + 0.3 * k), th * (0.7 + 0.3 * k), { alpha: a });
+      tile.label.textContent = `${fmt2(tile.tt)}s`;
+      Object.assign(tile.label.style, { fontSize: '18px', transform: `translate(${cx - tw / 2}px, ${cy + th / 2 + 6}px)`, opacity: a });
+    });
+    // the critic's beam reads the tiles in order and stops on the bad one
+    const sp = keyframesLinear(t, tl.scan);
+    const beam = $('#beam');
+    const reading = t >= tl.scan[0][0] && t < tl.scan.at(-1)[0];
+    vis(beam, reading);
+    if (reading) {
+      const bi = Math.min(tiles.length - 1, Math.floor(sp));
+      const r = tileRect(bi, m.w, m.h, W, H);
+      Object.assign(beam.style, { height: `${r.th + 16}px`, transform: `translate(${r.cx - r.tw / 2 + (sp - bi) * r.tw - 2}px, ${r.cy - r.th / 2 - 8}px)` });
+    }
+    tiles.forEach((tile, i) => { tile.label.style.color = t >= tl.scan[0][0] && sp >= i + 1 ? 'rgba(241, 238, 231, 0.95)' : ''; });
+    const d = tileRect(tl.defect.tile, m.w, m.h, W, H);
+    const ring = $('.ring', tilesEl), badge = $('#badge');
+    const flagged = t >= tl.defect.press;
+    const fixed = t >= tl.defect.fixed;
+    vis(ring, flagged);
+    vis(badge, flagged);
+    if (flagged) {
+      const rk = spring(t - tl.defect.press, feel.ui);
+      const grow = 10 + (1 - rk) * 18;
+      Object.assign(ring.style, { width: `${d.tw + 2 * grow}px`, height: `${d.th + 2 * grow}px`, transform: `translate(${d.cx - d.tw / 2 - grow}px, ${d.cy - d.th / 2 - grow}px)`, borderRadius: '8px', borderColor: fixed ? PAPER : ACCENT });
+      badge.textContent = fixed ? '9/10 ✓ fixed' : '6/10 · dead beat';
+      const bk = spring(t - (fixed ? tl.defect.fixed : tl.defect.press), feel.headline);
+      const fs = L.P ? 30 : 24;
+      Object.assign(badge.style, {
+        fontSize: `${fs}px`, padding: `${fs * 0.35}px ${fs * 0.7}px`, background: fixed ? PAPER : ACCENT, color: INK,
+        transform: `translate(${d.cx - d.tw / 2 - 10}px, ${d.cy - d.th / 2 - 20 - fs * 1.9 + (1 - bk) * 14}px)`,
+      });
+    }
+  }
+
+  // FORMATS: the main frame plus two more aspect ratios split out, all playing the hook
+  // the hook keeps playing in the frames until the color has cut (one frame after the cta step)
+  const fm = t >= tl.steps[6][0] + 1 / tl.fps ? 0 : clamp(progress(t, 9.05, 0.2));
+  const hookT = 0.35 + ((Math.max(0, t - 9.3)) % 2.1);
+  const split = spring(t - tl.formatsSplit, feel.panel) - spring(t - tl.formatsMerge, feel.panel);
+  const labels = $('#labels').children;
+  vis($('#labels'), fm > 0);
+  for (const [key, f] of [['a', L.frameA], ['b', L.frameB]]) {
+    const mm = minis[key];
+    const on = fm > 0 && split > 0.001;
+    vis(mm.root, on);
+    if (!on) continue;
+    const cx = lerp(L.frameMain.cx, f.cx, split), cy = lerp(L.frameMain.cy, f.cy, split);
+    const fw = lerp(L.frameMain.w * 0.6, f.w, split), fh = lerp(L.frameMain.h * 0.6, f.h, split);
+    const [FW, FH] = f.name === '1:1' ? [1080, 1080] : f.name === '9:16' ? [1080, 1920] : [1920, 1080];
+    drawMini(mm, hookT, FW, FH, cx, cy, fw, fh, { border: 3, alpha: fm * clamp(split * 3) });
+  }
+  // the main frame is the shape itself: draw the hook inside it
+  const mainOn = t >= tl.steps[5][0] && t < tl.steps[6][0] + 1 / tl.fps; // by time, not state name: on the cta frame itself the color hasn't cut yet
+  vis(minis.main.root, mainOn);
+  if (mainOn) {
+    const inset = 3;
+    const k = clamp(progress(t, 9.0, 0.14)); // crossfades with the tiles leaving, so the panel never sits empty
+    drawMini(minis.main, hookT, W, H, m.w / 2, m.h / 2, Math.max(0, m.w - 2 * inset), Math.max(0, m.h - 2 * inset), { alpha: k });
+  }
+  [L.frameMain, L.frameA, L.frameB].forEach((f, i) => {
+    const s = i === 0 ? 1 : split;
+    const cx = i === 0 ? m.x : lerp(L.frameMain.cx, f.cx, s);
+    const top = i === 0 ? m.y - m.h / 2 : lerp(L.frameMain.cy, f.cy, s) - lerp(L.frameMain.h * 0.6, f.h, s) / 2;
+    const a = fm * (i === 0 ? clamp(progress(t, 9.3, 0.25)) : clamp(split * 3));
+    const fs = L.P ? 30 : 32;
+    Object.assign(labels[i].style, { fontSize: `${fs}px`, transform: `translate(${cx - fs * 1.5}px, ${top - fs * 1.65}px)`, opacity: a });
+  });
+
+  // CLOSE: the command, typed into the shape, then the sign-off
+  const ct = $('#ctaText');
+  const cOn = t >= tl.cta.at - 0.1 && m.state === 'cta';
+  vis(ct, cOn);
+  if (cOn) {
+    const shown = typed(tl.cta.text, t, ctaTimes);
+    $('.txt', ct).textContent = shown;
+    $('.caret', ct).style.background = INK;
+    $('.caret', ct).style.opacity = shown.length < tl.cta.text.length || Math.floor((t - tl.cta.at) / (tl.beat / 2)) % 2 === 0 ? 1 : 0;
+    const textW = tl.cta.text.length * L.ctaSize * 0.6 + L.ctaSize * 0.6;
+    Object.assign(ct.style, { transform: `translate(${(m.w - textW) / 2}px, ${m.h / 2 - L.ctaSize * 0.52}px)` });
+  }
+  const sign = $('#sign');
+  const sk = spring(t - tl.sign.at, feel.headline);
+  const sOut = ease.inCubic(progress(t, 15.05, 0.2));
+  const sOn = t >= tl.sign.at && sOut < 1;
+  vis(sign, sOn);
+  if (sOn) {
+    sign.style.opacity = clamp(progress(t, tl.sign.at, 0.15)) * (1 - sOut);
+    const w = tl.sign.text.length * L.sign.size * 0.52;
+    sign.style.transform = `translate(${W / 2 - w / 2}px, ${L.sign.y + (1 - sk) * 24}px)`;
+  }
+
+  // the cursor: drags the playhead, flags the bad tile, leaves
+  const cur = $('#cursor');
+  const size = L.cursor;
+  let cx, cy;
+  const headPos = (tt) => [L.scrubber.cx - L.scrubber.w / 2 + pad + (clamp(playheadAt(tt), 0, D) / D) * (L.scrubber.w - 2 * pad), L.scrubber.cy + 4];
+  const d = tileRect(tl.defect.tile, L.sheet.w, L.sheet.h, W, H);
+  const defect = [L.sheet.cx - L.sheet.w / 2 + d.cx + d.tw * 0.15, L.sheet.cy - L.sheet.h / 2 + d.cy + d.th * 0.1];
+  if (t < tl.grab) {
+    [cx, cy] = cursorPath(t, [[0, W * 1.08, H * 1.1], [tl.grab - 0.55, ...headPos(tl.grab)]]);
+  } else if (t < tl.release) {
+    [cx, cy] = [m.x - m.w / 2 + px, m.y + 4];
+  } else {
+    [cx, cy] = cursorPath(t, [[tl.release, ...headPos(tl.release)], [tl.defect.press - 0.5, ...defect], [tl.defect.press + 0.55, W * 1.08, H * 1.06]]);
+  }
+  const press = pressAt.reduce((a, c) => a + (t >= c ? Math.exp(-(t - c) * 16) : 0), 0);
+  const dragging = t >= tl.grab && t < tl.release ? 0.08 : 0;
+  vis(cur, t > 1.2 && t < tl.defect.press + 1.3);
+  Object.assign(cur.style, { width: `${size}px`, height: `${size}px`, transform: `translate(${cx - size * 0.18}px, ${cy - size * 0.1}px) scale(${1 - 0.12 * press - dragging})` });
+}
+
+defineFilm({
+  duration: D,
+  fps: tl.fps,
+  formats: tl.formats,
+  timeline: { shots: tl.shots, cues: tl.cues },
+  audio: { score: './score.mjs' },
+  loop: true,
+  poster: 6.9,
+  setup,
+  seek,
+});
+</script>
+</body>
+</html>

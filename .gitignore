@@ -1,0 +1,8 @@
+node_modules/
+films/*/out/
+films/*/reviews/
+.env
+.env.*
+__pycache__/
+*.pyc
+.DS_Store
