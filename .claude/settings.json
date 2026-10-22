@@ -7,11 +7,14 @@
       "Bash(npm run capture *)",
       "Bash(npm run reference *)",
       "Bash(npm run beats *)",
+      "Bash(npm run preview)",
+      "Bash(npm run preview *)",
       "Bash(node .claude/skills/motion-reel/scripts/new-film.mjs *)",
       "Bash(node .claude/skills/motion-reel/scripts/render.mjs *)",
       "Bash(node .claude/skills/motion-reel/scripts/review.mjs *)",
       "Bash(node .claude/skills/motion-reel/scripts/capture.mjs *)",
       "Bash(node .claude/skills/motion-reel/scripts/reference.mjs *)",
+      "Bash(node .claude/skills/motion-reel/scripts/serve.mjs)",
       "Bash(python3 .claude/skills/motion-reel/scripts/beats.py *)",
       "Bash(ffprobe *)"
     ]

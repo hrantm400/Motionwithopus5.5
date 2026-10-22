@@ -48,4 +48,6 @@ console.log(`✔ ${rel} · ${duration}s · ${formats.join(', ')} @ ${fps} fps`);
 console.log(`  next: fill ${rel}/brief.md and collect real assets (GATE 1), then style_guide.md + shotlist.md (GATE 2).`);
 const render = path.join(SKILL_DIR, 'scripts', 'render.mjs');
 const shown = path.relative(ROOT, render).startsWith('..') ? render : path.relative(ROOT, render);
-console.log(`  smoke test: node ${shown} ${slug} --stills every:1`);
+const pkg = path.join(ROOT, 'package.json');
+const viaNpm = fs.existsSync(pkg) && /render\.mjs/.test(JSON.parse(fs.readFileSync(pkg, 'utf8')).scripts?.render || '');
+console.log(`  smoke test: ${viaNpm ? `npm run render -- ${slug}` : `node ${shown} ${slug}`} --stills every:1`);

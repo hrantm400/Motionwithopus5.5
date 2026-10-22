@@ -53,7 +53,7 @@ Every instrument is `fn(mix, t, options)`; gains in dB, pan −1…1, `verb` = r
 ## With a supplied track
 
 ```
-python3 <skill>/scripts/beats.py films/<slug>/assets/audio/song.wav --out films/<slug>/src/beats.json
+npm run beats -- films/<slug>/assets/audio/song.wav --out films/<slug>/src/beats.json
 ```
 
 `beats.json` has `bpm`, `beats` (state changes go here), `downbeats` (big moments;

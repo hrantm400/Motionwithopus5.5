@@ -7,7 +7,7 @@ let `review.mjs` build the evidence, then judge it.
 
 ## The review pack, image by image
 
-`node <skill>/scripts/review.mjs <slug> --format <f>` reads the exported MP4 (what
+`npm run review -- <slug> --format <f>` reads the exported MP4 (what
 ships, encoding included) and writes `reviews/rNN-<format>/`:
 
 | file | what it shows | look for |
@@ -76,8 +76,9 @@ property: "split the 2.0 s move into drop (2.0) then stretch (2.2)".
 5. record the round in STATUS.md: lowest score, worst defect fixed
 
 Before signing off, look at a few frames at full size, the poster among them:
-`ffmpeg -ss 15.4 -i out/<slug>-16x9.mp4 -frames:v 1 frame.png`. A 320 px contact
-sheet hides a column cut off by a half-finished wipe, a cursor resting on the
+`npm run render -- <slug> --stills 8.8,15.4,18.9 --format all` writes full-size
+PNGs next to its sheet (open the PNGs, not only the sheet), and the posters are
+full size in `out/`. A 320 px contact sheet hides a column cut off by a half-finished wipe, a cursor resting on the
 label it clicks, a beam running over a card's title.
 
 Stop at 8+ on every criterion in every format. After six rounds without getting

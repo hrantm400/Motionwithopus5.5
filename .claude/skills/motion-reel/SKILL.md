@@ -2,7 +2,7 @@
 name: motion-reel
 description: Make motion design videos with code — launch films, product promos, UI motion, showreels, kinetic type, data stories and social clips (vertical, square, wide) — as deterministic seek(t) HTML compositions rendered to MP4 with Playwright and ffmpeg, a soundtrack synthesized on the same clock, and a self-critique loop on contact sheets before anything is shown. Use it whenever someone asks for a video, promo, launch film, reel, motion graphics, an animated product demo, "make it move", gives a product URL to turn into a film, wants a film re-cut to another aspect ratio, or wants a film in films/ fixed, re-timed, re-scored or reviewed — even if they never say "motion-reel".
 argument-hint: "[url | product | brief.md] [duration] [vertical|square|wide|all] [ref ./refs/x] [music ./song.wav] [overnight]"
-allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/scripts/render.mjs *) Bash(node ${CLAUDE_SKILL_DIR}/scripts/review.mjs *) Bash(node ${CLAUDE_SKILL_DIR}/scripts/new-film.mjs *) Bash(node ${CLAUDE_SKILL_DIR}/scripts/capture.mjs *) Bash(node ${CLAUDE_SKILL_DIR}/scripts/reference.mjs *) Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/beats.py *) Bash(ffprobe *)
+allowed-tools: Bash(npm run new *) Bash(npm run render *) Bash(npm run review *) Bash(npm run capture *) Bash(npm run reference *) Bash(npm run beats *) Bash(npm run preview) Bash(node ${CLAUDE_SKILL_DIR}/scripts/render.mjs *) Bash(node ${CLAUDE_SKILL_DIR}/scripts/review.mjs *) Bash(node ${CLAUDE_SKILL_DIR}/scripts/new-film.mjs *) Bash(node ${CLAUDE_SKILL_DIR}/scripts/capture.mjs *) Bash(node ${CLAUDE_SKILL_DIR}/scripts/reference.mjs *) Bash(node ${CLAUDE_SKILL_DIR}/scripts/serve.mjs) Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/beats.py *) Bash(ffprobe *)
 ---
 
 # Motion reel
@@ -74,21 +74,26 @@ picture and the score import it, so a hit can never drift off its frame.
 
 ## 3. Tools
 
-Run every script from the project root, spelled exactly as below so the
-pre-approved commands match.
+Run the studio through npm, spelled exactly as below: the project's
+`.claude/settings.json` pre-approves these `npm run` commands for the whole
+session, on any machine, and everything after `--` goes to the script, never to
+node. npm runs them from the project root, so paths are relative to it. If the
+skill was installed where there is no studio `package.json` (for example in
+`~/.claude/skills/`), run the same scripts directly:
+`node ${CLAUDE_SKILL_DIR}/scripts/render.mjs <slug> …` (`beats.py` with `python3`).
 
 | step | command |
 |---|---|
-| new film from the template | `node ${CLAUDE_SKILL_DIR}/scripts/new-film.mjs <slug> --duration 15 --formats 16x9,9x16` |
-| pull real public assets from a site | `node ${CLAUDE_SKILL_DIR}/scripts/capture.mjs <url> <slug> [--pages /,/pricing]` |
-| take a reference clip apart | `node ${CLAUDE_SKILL_DIR}/scripts/reference.mjs films/<slug>/refs/clip.mp4` |
-| measure a music track | `python3 ${CLAUDE_SKILL_DIR}/scripts/beats.py films/<slug>/assets/audio/song.wav --out films/<slug>/src/beats.json` |
-| stills for every shot (+ sheet) | `node ${CLAUDE_SKILL_DIR}/scripts/render.mjs <slug> --stills shots [--format all] [--guides]` |
-| animatic at half size (960×540 / 540×960) | `node ${CLAUDE_SKILL_DIR}/scripts/render.mjs <slug> --scale 0.5` |
-| re-check a few seconds | `node ${CLAUDE_SKILL_DIR}/scripts/render.mjs <slug> --from 4 --to 7` |
-| full render | `node ${CLAUDE_SKILL_DIR}/scripts/render.mjs <slug> --format all` |
-| review pack | `node ${CLAUDE_SKILL_DIR}/scripts/review.mjs <slug> --format 9x16` |
-| preview for a human (scrub, sound, guides) | `node ${CLAUDE_SKILL_DIR}/scripts/serve.mjs` → open the printed URL |
+| new film from the template | `npm run new -- <slug> --duration 15 --formats 16x9,9x16` |
+| pull real public assets from a site | `npm run capture -- <url> <slug> [--pages /,/pricing]` |
+| take a reference clip apart | `npm run reference -- films/<slug>/refs/clip.mp4` |
+| measure a music track | `npm run beats -- films/<slug>/assets/audio/song.wav --out films/<slug>/src/beats.json` |
+| stills for every shot (+ sheet) | `npm run render -- <slug> --stills shots [--format all] [--guides]` |
+| animatic at half size (960×540 / 540×960) | `npm run render -- <slug> --scale 0.5` |
+| re-check a few seconds | `npm run render -- <slug> --from 4 --to 7` |
+| full render | `npm run render -- <slug> --format all` |
+| review pack | `npm run review -- <slug> --format 9x16` |
+| preview for a human (scrub, sound, guides) | `npm run preview` → open the printed URL |
 
 Render prints contract violations (clock or randomness inside `seek()`) and
 fails on missing assets or page errors — read its output, don't skim it.
@@ -119,7 +124,7 @@ platform zones on vertical (`--guides`). Fix before animating — 900 polished
 wrong frames cost more than one test frame.
 
 **GATE 4 — animatic.** `render.mjs --scale 0.5` (half size) with the score in place (even a
-rough one), then `review.mjs --video films/<slug>/out/<slug>-<format>-animatic.mp4`.
+rough one), then `npm run review -- <slug> --video films/<slug>/out/<slug>-<format>-animatic.mp4`.
 Pacing, dead beats and sync show up here at a quarter of the cost.
 
 **GATE 5 — full pass.** Full render, then the critic loop below until every
@@ -135,7 +140,7 @@ the film folder: what was made, the files, how to re-render, open issues.
 The habit every clip that blew up had in common: Opus reads images, so it
 looks at what it rendered. After each render:
 
-1. `node ${CLAUDE_SKILL_DIR}/scripts/review.mjs <slug> --format <f>` — builds contact sheet, motion strip, phone test, loop seam, signals chart, loudness, sync and determinism checks.
+1. `npm run review -- <slug> --format <f>` — builds contact sheet, motion strip, phone test, loop seam, signals chart, loudness, sync and determinism checks.
 2. Read **every** image it lists and `report.md`. Judge only the rendered frames, not what you meant to make.
 3. Fill `critique.md` in that review folder: score 1–10 for hook, phone readability, motion, variety, sound sync, brand accuracy; then the **three worst defects**, each with timestamp, evidence and a local fix.
 4. Patch those seconds, check them with `--from/--to` or `--stills`, re-render, review again.
