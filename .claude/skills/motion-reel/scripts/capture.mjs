@@ -6,10 +6,17 @@
 // Writes films/<film>/assets/site/:
 //   <page>-desktop.png   1440×900 viewport          <page>-mobile.png  390×844 @2x
 //   <page>-full.png      full page (capped at 6000 px tall)
+//   <page>-scroll-NN.png the page section by section (works when the page
+//                        scrolls inside a container and full-page shots can't)
 //   images/              large <img> assets from the page (product shots, ≥ 600 px wide)
+//   video/               <video> files the page plays (product footage), ≤ 80 MB each
 //   logo/                favicon, apple-touch-icon, og:image, logo <img>/<svg> candidates
-//   brand.json           colors weighted by on-screen area, fonts in use, page meta
+//   brand.json           colors weighted by on-screen area, fonts in use, page meta,
+//                        the page's own copy (headings, buttons) to quote in the brief
 //   README.md            what was captured, from where — and what was NOT
+//
+// A cookie banner is dismissed first ("reject" preferred) so it doesn't cover
+// the screenshots.
 //
 // It only records what the site really shows. Logged-in product screens are
 // never on a marketing page: ask the user for them instead of drawing fakes.
@@ -24,10 +31,57 @@ if (!rawUrl || !filmArg) die('Usage: node capture.mjs <url> <film> [--pages /,/p
 const base = new URL(/^https?:\/\//.test(rawUrl) ? rawUrl : `https://${rawUrl}`);
 const film = resolveFilm(filmArg);
 const out = path.join(film.dir, 'assets', 'site');
-for (const d of ['', 'images', 'logo']) fs.mkdirSync(path.join(out, d), { recursive: true });
+for (const d of ['', 'images', 'logo', 'video']) fs.mkdirSync(path.join(out, d), { recursive: true });
 const rel = (p) => path.relative(ROOT, p);
 const pages = String(args.pages || base.pathname || '/').split(',').map((p) => p.trim() || '/');
 const maxImages = Number(args['max-images'] || 24);
+const maxSteps = Number(args['scroll-steps'] || 14);
+
+// Close a consent banner: the most privacy-preserving button that is visible.
+async function dismissConsent(page) {
+  for (const pattern of [/^(reject|decline|deny)( all)?$|only (necessary|essential)|necessary only|essential only/i, /^(accept|allow)( all)?$|^(agree|got it|ok|okay)$/i]) {
+    const buttons = page.locator('button, [role="button"], a');
+    const n = Math.min(await buttons.count(), 200);
+    for (let i = 0; i < n; i++) {
+      const b = buttons.nth(i);
+      const text = ((await b.innerText().catch(() => '')) || '').trim().replace(/\s+/g, ' ');
+      if (text.length < 40 && pattern.test(text) && (await b.isVisible().catch(() => false))) {
+        await b.click({ timeout: 3000 }).catch(() => {});
+        await page.waitForTimeout(600);
+        return text;
+      }
+    }
+  }
+  return null;
+}
+
+// Scroll the page (or the element that really scrolls) one screen at a time,
+// letting lazy content load, with a screenshot per step.
+async function scrollPass(page, name, url) {
+  const files = [];
+  for (let step = 0; step < maxSteps; step++) {
+    const moved = await page.evaluate((k) => {
+      const candidates = [document.scrollingElement, ...document.querySelectorAll('body *')].filter((el) => {
+        if (!el) return false;
+        const cs = el === document.scrollingElement ? null : getComputedStyle(el);
+        return el.scrollHeight - el.clientHeight > 200 && (!cs || /(auto|scroll)/.test(cs.overflowY));
+      });
+      const el = candidates.sort((a, b) => b.scrollHeight - a.scrollHeight)[0];
+      if (!el) return false;
+      if (k === 0) { el.scrollTop = 0; return true; }
+      const before = el.scrollTop;
+      el.scrollTop = before + Math.round(innerHeight * 0.85);
+      return el.scrollTop > before;
+    }, step);
+    if (!moved) break;
+    await page.waitForTimeout(700);
+    const file = path.join(out, `${name}-scroll-${String(step + 1).padStart(2, '0')}.png`);
+    await page.screenshot({ path: file });
+    saved.push({ file: rel(file), from: `${url} (scrolled)` });
+    files.push(file);
+  }
+  return files;
+}
 
 const chromium = await loadChromium();
 const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
@@ -44,7 +98,7 @@ async function download(ctx, src, dir, name) {
     const res = await ctx.request.get(src, { timeout: 20000 });
     if (!res.ok()) return null;
     const type = res.headers()['content-type'] || '';
-    const ext = type.includes('svg') ? '.svg' : type.includes('png') ? '.png' : type.includes('webp') ? '.webp' : type.includes('gif') ? '.gif' : type.includes('icon') ? '.ico' : type.includes('avif') ? '.avif' : '.jpg';
+    const ext = type.includes('svg') ? '.svg' : type.includes('png') ? '.png' : type.includes('webp') ? '.webp' : type.includes('gif') ? '.gif' : type.includes('icon') ? '.ico' : type.includes('avif') ? '.avif' : type.includes('mp4') ? '.mp4' : type.includes('webm') ? '.webm' : type.includes('quicktime') ? '.mov' : '.jpg';
     const file = path.join(dir, name + ext);
     fs.writeFileSync(file, await res.body());
     saved.push({ file: rel(file), from: src });
@@ -63,6 +117,8 @@ try {
     const resp = await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 }).catch((e) => die(`Could not open ${url}: ${e.message.split('\n')[0]}`));
     if (resp && resp.status() >= 400) console.log(`! ${url} answered HTTP ${resp.status()}`);
     await page.waitForTimeout(1200); // let hero animations settle before the screenshot
+    const consent = await dismissConsent(page);
+    if (consent) console.log(`  closed a consent banner ("${consent}")`);
     const shot = async (pg, file, opts = {}) => { await pg.screenshot({ path: file, ...opts }); saved.push({ file: rel(file), from: url }); };
     await shot(page, path.join(out, `${name}-desktop.png`));
     const height = await page.evaluate(() => document.documentElement.scrollHeight);
@@ -116,15 +172,37 @@ try {
       };
     });
 
+    const sections = await scrollPass(page, name, url);
+    const late = await page.evaluate(() => {
+      const abs = (u) => { try { return new URL(u, location.href).href; } catch { return null; } };
+      const images = [...document.images].filter((i) => i.naturalWidth >= 600).map((i) => ({ src: abs(i.currentSrc || i.src), w: i.naturalWidth, h: i.naturalHeight, alt: i.alt }));
+      const videos = [...document.querySelectorAll('video')].map((v) => ({ src: abs(v.currentSrc || v.src || v.querySelector('source')?.src || ''), poster: abs(v.poster || ''), w: v.videoWidth, h: v.videoHeight })).filter((v) => v.src && !v.src.startsWith('blob:'));
+      const text = (sel) => [...new Set([...document.querySelectorAll(sel)].map((e) => e.innerText.trim().replace(/\s+/g, ' ')).filter((t) => t && t.length < 220))];
+      return { images, videos, headings: text('h1, h2, h3').slice(0, 60), buttons: text('button, a[class*="button" i], [role="button"]').filter((t) => t.length < 40).slice(0, 40) };
+    });
+    for (const img of late.images) if (!facts.images.some((i) => i.src === img.src)) facts.images.push(img);
+    facts.videos = late.videos;
+    facts.copy = { headings: late.headings, buttons: late.buttons };
+    let v = 0;
+    for (const vid of late.videos.slice(0, 3)) {
+      try {
+        const head = await desk.request.head(vid.src, { timeout: 15000 });
+        const size = Number(head.headers()['content-length'] || 0);
+        if (size > 80 * 1048576) { console.log(`  skipped video ${vid.src} (${(size / 1048576).toFixed(0)} MB)`); continue; }
+      } catch {}
+      await download(desk, vid.src, path.join(out, 'video'), `${name}-${String(++v).padStart(2, '0')}`);
+    }
+
     const mob = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
     const mpage = await mob.newPage();
     await mpage.goto(url, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
     await mpage.waitForTimeout(1200);
+    await dismissConsent(mpage);
     await shot(mpage, path.join(out, `${name}-mobile.png`));
     await mob.close();
 
     let n = 0;
-    for (const img of facts.images.slice(0, maxImages)) {
+    for (const img of facts.images.sort((a, b) => b.w * b.h - a.w * a.h).slice(0, maxImages)) {
       if (img.src && !img.src.startsWith('data:')) await download(desk, img.src, path.join(out, 'images'), `${name}-${String(++n).padStart(2, '0')}-${img.w}x${img.h}`);
     }
     let k = 0;
@@ -146,9 +224,9 @@ try {
     const totalText = merged.reduce((s, c) => s + c.text, 0) || 1;
     const sat = (h) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255); const mx = Math.max(r, g, b), mn = Math.min(r, g, b); return mx === 0 ? 0 : (mx - mn) / mx; };
     const colors = merged.slice(0, 10).map((c) => ({ hex: c.hex, screen: Number((c.area / totalArea).toFixed(3)), text: Number((c.text / totalText).toFixed(3)), saturation: Number(sat(c.hex).toFixed(2)) }));
-    brand.pages.push({ url, title: facts.title, description: facts.description, themeColor: facts.themeColor, colors, fonts: facts.fonts, fontFaces: [...new Set(facts.fontFaces)], images: facts.images.length });
+    brand.pages.push({ url, title: facts.title, description: facts.description, themeColor: facts.themeColor, colors, fonts: facts.fonts, fontFaces: [...new Set(facts.fontFaces)], images: facts.images.length, videos: facts.videos, copy: facts.copy, sections: sections.map(rel) });
     await desk.close();
-    console.log(`✔ ${url} → ${colors.length} colors, ${facts.images.length} large images, ${facts.icons.length + facts.logoImgs.length + facts.logoSvgs.length} logo candidates`);
+    console.log(`✔ ${url} → ${colors.length} colors, ${facts.images.length} large images, ${facts.videos.length} videos, ${sections.length} section shots, ${facts.icons.length + facts.logoImgs.length + facts.logoSvgs.length} logo candidates`);
   }
 } finally {
   await browser.close();
@@ -163,6 +241,11 @@ fs.writeFileSync(path.join(out, 'README.md'), [
   '',
   '## Colors (by share of screen / share of text — guesses, confirm against the brand guide)',
   ...(first.colors || []).map((c) => `- \`${c.hex}\` screen ${(c.screen * 100).toFixed(1)}% · text ${(c.text * 100).toFixed(1)}% · saturation ${c.saturation}`),
+  '',
+  '## The page\'s own words (quote these; don\'t invent claims)',
+  ...((first.copy && first.copy.headings) || []).map((h) => `- ${h}`),
+  '',
+  'Buttons: ' + (((first.copy && first.copy.buttons) || []).join(' · ') || '—'),
   '',
   '## Fonts in use',
   ...Object.entries(first.fonts || {}).filter(([, v]) => v).map(([k, v]) => `- ${k}: ${v.family} · ${v.weight} · ${v.size}`),

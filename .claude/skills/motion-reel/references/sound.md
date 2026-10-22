@@ -73,9 +73,11 @@ Use `--bpm 100:200` if a fast track is read half-time.
 ## Loudness
 
 The renderer mixes the score and the track, then normalizes to −14 LUFS integrated
-with a −1.5 dBTP ceiling (two-pass loudnorm), which lands around −1 dBTP after
-AAC. Override with `--lufs` or `audio.lufs`. `review.mjs` measures the export
-again (ebur128) and flags anything off by more than 1.5 LU or peaking above −0.5.
+with a −2.5 dBTP ceiling (two-pass loudnorm). AAC adds about 1 dB of true peak on
+transients, so the renderer encodes the mix once, measures it, and pulls the whole
+mix down if the encoded peak is still above −1.2 dBTP. Override the loudness with
+`--lufs` or `audio.lufs`. `review.mjs` measures the export again (ebur128) and
+flags anything off by more than 1.5 LU or peaking above −1 dBTP.
 
 ## Listening without ears
 

@@ -1,0 +1,590 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>LiquidityScan — 20 s promo</title>
+<style>
+  @font-face { font-family: 'LS Inter'; src: url('../assets/fonts/Inter-Black.woff2') format('woff2'); font-weight: 900; }
+  @font-face { font-family: 'LS Inter'; src: url('../assets/fonts/Inter-Medium.woff2') format('woff2'); font-weight: 500; }
+  @font-face { font-family: 'LS Inter'; src: url('../assets/fonts/Inter-Regular.woff2') format('woff2'); font-weight: 400; }
+  @font-face { font-family: 'LS Mono'; src: url('../assets/fonts/JetBrainsMono-Regular.woff2') format('woff2'); font-weight: 400; }
+  @font-face { font-family: 'LS Mono'; src: url('../assets/fonts/JetBrainsMono-Bold.woff2') format('woff2'); font-weight: 700; }
+  @font-face { font-family: 'LS Mono'; src: url('../assets/fonts/JetBrainsMono-ExtraBold.woff2') format('woff2'); font-weight: 800; }
+  @font-face { font-family: 'LS Outfit'; src: url('../assets/fonts/Outfit-Bold.woff2') format('woff2'); font-weight: 700; }
+
+  :root { --bg: #090C11; --ink: #F3F4F6; --muted: #94A3B8; --muted2: #6B7280; --accent: #13EC37; --accent-ink: #021805; }
+  #stage { background: var(--bg); color: var(--ink); font-family: 'LS Inter', sans-serif; }
+  .abs { position: absolute; left: 0; top: 0; }
+
+  /* the site's grid paper and its faint green wash, both static */
+  #grid { inset: 0; width: 100%; height: 100%;
+    background-image:
+      radial-gradient(circle at 8% 0%, rgba(19, 236, 55, 0.07), transparent 38%),
+      linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 100% 100%, 96px 96px, 96px 96px; }
+
+  .kicker { font: 700 26px 'LS Mono', monospace; letter-spacing: 0.22em; color: var(--accent); white-space: nowrap; }
+  .kicker i { display: inline-block; width: 0.5em; height: 0.5em; border-radius: 50%; background: var(--accent); margin-right: 0.7em; vertical-align: 0.12em; }
+  .head { font-weight: 900; letter-spacing: -0.035em; line-height: 0.98; }
+  .head .line { overflow: hidden; padding: 0 0.06em 0.11em 0; margin-bottom: -0.11em; }
+  .head .line span { display: inline-block; white-space: nowrap; }
+  .g { color: var(--accent); }
+
+  .tile { position: absolute; background: #0F141C; border: 1.5px solid #1B2230; border-radius: 14px; overflow: hidden; }
+  .tile svg { position: absolute; left: 0; top: 0; }
+  .tile .tk { position: absolute; left: 14px; top: 10px; font: 500 15px 'LS Mono', monospace; color: #4E5869; white-space: nowrap; }
+  #dim { background: rgba(9, 12, 17, 0.78); }
+  .ping { position: absolute; display: flex; align-items: center; gap: 8px; padding: 7px 13px 7px 10px; border-radius: 999px;
+    background: #1A202B; border: 1px solid #2B3443; font: 700 16px 'LS Mono', monospace; color: #C7CFDA; white-space: nowrap; transform-origin: 0 50%; }
+  .ping svg { width: 16px; height: 16px; flex: none; }
+
+  .shot { position: absolute; left: 0; top: 0; overflow: hidden; }
+  .shot img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+  .mask { position: absolute; background: #161C28; transform-origin: 100% 50%; }
+  .ring { position: absolute; border: 3px solid var(--accent); box-sizing: border-box; }
+
+  .stat { white-space: nowrap; } /* abs children of an abs container shrink to min-content and wrap at every space */
+  .stat .big { font-weight: 900; letter-spacing: -0.04em; line-height: 1; white-space: nowrap; }
+  .stat .small { font-weight: 500; color: var(--muted); white-space: nowrap; }
+  .scanned { position: absolute; border: 3px solid var(--accent); box-sizing: border-box; }
+  #beam { width: 4px; border-radius: 2px; background: linear-gradient(to bottom, transparent, var(--accent) 18%, var(--accent) 82%, transparent); }
+
+  .lockup { display: flex; align-items: center; white-space: nowrap; }
+  #endLockup { justify-content: center; }
+  #tagline, #url, #note, #disc { text-align: center; }
+  .wordmark { font-family: 'LS Outfit', sans-serif; font-weight: 700; letter-spacing: -0.01em; color: #E7ECF3; line-height: 1; }
+  .wordmark .scan { color: var(--muted2); }
+  #cta { display: flex; align-items: center; justify-content: center; gap: 0.6em; background: var(--accent); color: var(--accent-ink);
+    font-family: 'LS Outfit', sans-serif; font-weight: 700; letter-spacing: 0.16em; border-radius: 999px; white-space: nowrap; }
+  #url { font-family: 'LS Mono', monospace; font-weight: 700; color: var(--ink); white-space: nowrap; }
+  #note { font-weight: 500; color: var(--muted); white-space: nowrap; }
+  #disc { font-weight: 400; color: var(--muted); line-height: 1.35; }
+  #tagline { white-space: nowrap; }
+  #cursor { overflow: visible; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="grid" class="abs"></div>
+  <div id="wall" class="abs"></div>
+  <div id="dim" class="abs"></div>
+  <div id="pings" class="abs"></div>
+  <div id="kicker" class="abs kicker"><i></i><span class="txt"></span></div>
+  <div id="hookHead" class="abs head"></div>
+  <div id="turnHead" class="abs head g"></div>
+  <div id="brand" class="abs lockup"></div>
+  <div id="stats" class="abs"></div>
+  <div id="cards" class="abs"></div>
+  <div id="beam" class="abs"></div>
+  <div id="confirmHead" class="abs head"></div>
+  <div id="panel" class="shot"><img src="../assets/screens/confluence-panel.png" alt=""></div>
+  <div id="decideHead" class="abs head"></div>
+  <div id="warroom" class="shot"><img src="../assets/screens/warroom-case.png" alt=""></div>
+  <div id="words" class="abs head"></div>
+  <div id="end" class="abs">
+    <div id="endLockup" class="abs lockup"></div>
+    <div id="tagline" class="abs head g">Stop babysitting the charts.</div>
+    <div id="cta" class="abs"><span>START FREE</span><span>→</span></div>
+    <div id="url" class="abs">liquidityscan.io</div>
+    <div id="note" class="abs">No card required for Free</div>
+  </div>
+  <div id="disc" class="abs">Software for educational and informational use only&nbsp;— not financial advice.</div>
+  <svg width="0" height="0" class="abs" aria-hidden="true"><filter id="mblur" x="-25%" y="0%" width="150%" height="100%" color-interpolation-filters="sRGB"><feGaussianBlur id="mblurK" stdDeviation="0 0"/></filter></svg>
+  <svg id="cursor" class="abs" viewBox="0 0 24 24"><path d="M4.5 2.5l15.5 9.2-6.9 1.6-3.3 7.2z" fill="#F3F4F6" stroke="#090C11" stroke-width="1.6" stroke-linejoin="round"/></svg>
+</div>
+<script type="module">
+import { defineFilm } from '/_studio/runtime.mjs';
+import { spring, feel, ease, progress, clamp, lerp, rng, hash01, typeTimes, typed, cursorPath, track } from '/_studio/motion.mjs';
+import tl from './timeline.mjs';
+
+const $ = (s, el = document) => el.querySelector(s);
+const D = tl.duration;
+const vis = (el, on) => { el.style.display = on ? '' : 'none'; }; // display:none hides the whole subtree, nothing leaks between frames
+// 0→1 in, 1→0 out, eased: for mass-less opacity windows
+const windowed = (t, a, b, fade = 0.2) => Math.min(ease.outCubic(progress(t, a, fade)), 1 - ease.inCubic(progress(t, b - fade, fade)));
+
+// ── the brand mark: the site's favicon.svg, with its parts named so they can move
+const MARK = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <rect class="m-bg" width="100" height="100" rx="22" fill="#0A0D14"/>
+  <g class="m-L" fill="#13ec37"><rect x="12" y="30" width="7.5" height="34" rx="3.8"/><rect x="12" y="56.5" width="19" height="7.5" rx="3.8"/></g>
+  <g class="m-c" fill="#13ec37"><rect x="38.50" y="27.71" width="3.00" height="42.43" rx="1.50"/><rect x="36.20" y="39.29" width="7.60" height="19.29" rx="1.17"/></g>
+  <g class="m-c" fill="#13ec37"><rect x="49.00" y="20.00" width="3.00" height="54.00" rx="1.50"/><rect x="46.70" y="30.61" width="7.60" height="32.79" rx="1.17"/></g>
+  <g class="m-c" fill="#13ec37"><rect x="59.50" y="27.71" width="3.00" height="46.29" rx="1.50"/><rect x="57.20" y="39.29" width="7.60" height="23.14" rx="1.17"/></g>
+  <path class="m-S" d="M89.5 36.5 C89.5 31.5 84.5 29.5 80 29.5 C75 29.5 71.5 32.5 71.5 36.5 C71.5 41 75.5 43 80.5 45 C86 47.2 90 49.5 90 55 C90 60.5 85.5 64.5 80 64.5 C75 64.5 71.5 62.5 70 59" fill="none" stroke="#FFFFFF" stroke-width="7.5" stroke-linecap="round"/>
+</svg>`;
+const WORDMARK = '<span class="wordmark">Liquidity<span class="scan">Scan</span></span>';
+
+// ── layout: every number that depends on the format ─────────────────────────
+// Vertical: one column, bigger type relative to width, nothing in the platform
+// zones (top 220, bottom 420, right 140 px around y 920–1500).
+
+function layout(W, H) {
+  const P = H > W;
+  const M = P ? 80 : 120;
+  const L = { P, W, H, M };
+  // hook wall
+  L.wall = P ? { cols: 3, rows: 6, gap: 18 } : { cols: 6, rows: 4, gap: 20 };
+  L.wall.tw = (W - 2 * M - (L.wall.cols - 1) * L.wall.gap) / L.wall.cols;
+  L.wall.th = L.wall.tw * 0.62;
+  L.wall.h = L.wall.rows * L.wall.th + (L.wall.rows - 1) * L.wall.gap;
+  L.wall.top = (H - L.wall.h) / 2;
+  L.hook = P ? { lines: ["You can't", 'watch every', 'chart.'], x: M, y: 690, size: 128 } : { lines: ["You can't watch", 'every chart.'], x: M, y: 400, size: 150 };
+  L.turn = P ? { lines: ['Stop', 'babysitting', 'the charts.'], x: M, y: 560, size: 136 } : { lines: ['Stop babysitting', 'the charts.'], x: M, y: 330, size: 160 };
+  L.brand = P ? { x: M, y: 1080, mark: 112, word: 84 } : { x: M, y: 720, mark: 96, word: 72 };
+  L.kicker = P ? { x: M, y: 262, size: 28 } : { x: M, y: 150, size: 26 };
+  // cover
+  L.stats = P
+    ? { x: M, y: 318, dy: 146, dx: 0, big: 104, small: 36, inline: true }
+    : { x: M, y: 210, dy: 0, dx: 560, big: 112, small: 30, inline: false };
+  L.cards = P ? { cw: 560, gap: 28, y: 770 } : { cw: 396, gap: 32, y: 440 };
+  L.cards.ch = L.cards.cw * (861 / 714);
+  // confirm / decide: words left + UI right on wide; words on top + UI below on vertical
+  L.side = P ? { x: M, y: 330, size: 104 } : { x: M, y: 370, size: 92 };
+  L.panel = P ? { w: 840, cx: M + 420, cy: 1080 } : { w: 960, cx: W - M - 480, cy: 560 };
+  L.panel.h = L.panel.w * (1254 / 1881);
+  L.war = P ? { w: 800, cx: M + 400, cy: 1105 } : { w: 800, cx: W - M - 400, cy: 556 };
+  L.war.h = L.war.w * (1737 / 1881);
+  // close
+  L.words = P ? { x: M, y: 560, size: 176 } : { x: M, y: 250, size: 190 };
+  L.end = P
+    ? { cy: 520, mark: 120, word: 92, tag: 56, tagY: 690, ctaW: 560, ctaH: 120, ctaY: 900, ctaFont: 34, urlY: 1080, url: 40, noteY: 1146, note: 28 }
+    : { cy: 330, mark: 140, word: 112, tag: 70, tagY: 470, ctaW: 540, ctaH: 116, ctaY: 610, ctaFont: 34, urlY: 776, url: 38, noteY: 836, note: 30 };
+  L.disc = P ? { y: 1372, size: 30, w: 760, cx: W / 2 } : { y: 996, size: 30, w: 1500, cx: W / 2 };
+  L.cursor = P ? 58 : 46;
+  return L;
+}
+
+// ── generic market tiles for the hook: noise, deliberately not LiquidityScan UI
+const TICKERS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XAUUSD', 'EURUSD', 'NQ1!', 'ES1!', 'GBPJPY', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT', 'AVAXUSDT', 'LINKUSDT', 'US30', 'USDJPY', 'GBPUSD', 'ADAUSDT', 'TONUSDT', 'OPUSDT', 'ARBUSDT', 'SUIUSDT', 'NEARUSDT', 'INJUSDT', 'APTUSDT'];
+const TFS = ['1m', '5m', '15m', '1H', '4H'];
+const PINGS = ['FVG · 5m', 'OB · 1m', 'Sweep · 15m', 'BOS · 1m', 'CHoCH · 5m', 'RSI div · 15m', 'FVG · 1m', 'OB · 5m', 'MSS · 1m', 'Sweep · 5m', 'iFVG · 15m', 'Breaker · 1m'];
+const BELL = '<svg viewBox="0 0 24 24" fill="none" stroke="#13ec37" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>';
+
+function chartSVG(w, h, seed) {
+  const r = rng(seed);
+  const n = 16, pad = 14, top = 34;
+  let price = 0;
+  const candles = [];
+  for (let i = 0; i < n; i++) {
+    const o = price;
+    const c = o + (r() - 0.48) * 2.2;
+    const hi = Math.max(o, c) + r() * 0.9;
+    const lo = Math.min(o, c) - r() * 0.9;
+    candles.push({ o, c, hi, lo });
+    price = c;
+  }
+  const max = Math.max(...candles.map((k) => k.hi)), min = Math.min(...candles.map((k) => k.lo));
+  const y = (v) => top + (1 - (v - min) / (max - min || 1)) * (h - top - pad);
+  const step = (w - 2 * pad) / n;
+  const parts = candles.map((k, i) => {
+    const x = pad + step * (i + 0.5);
+    const up = k.c >= k.o;
+    const col = up ? '#1F9D57' : '#C2414A';
+    const by = Math.min(y(k.o), y(k.c)), bh = Math.max(2, Math.abs(y(k.o) - y(k.c)));
+    return `<line x1="${x}" x2="${x}" y1="${y(k.hi)}" y2="${y(k.lo)}" stroke="${col}" stroke-width="1.5"/><rect x="${x - step * 0.3}" y="${by}" width="${step * 0.6}" height="${bh}" rx="1.5" fill="${col}"/>`;
+  });
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${parts.join('')}</svg>`;
+}
+
+// ── build everything once per format ────────────────────────────────────────
+
+let L, tiles, pingEls, heads, kickerTimes, statEls, cardEls, panelMasks, fireRing, wordEls, brandEl, endLockup;
+
+function lines(el, texts, size, greenFrom = Infinity) {
+  el.style.fontSize = `${size}px`;
+  el.innerHTML = texts.map((tx, i) => `<div class="line"><span class="${i >= greenFrom ? 'g' : ''}">${tx}</span></div>`).join('');
+  return [...el.querySelectorAll('.line span')];
+}
+
+function setup({ width: W, height: H }) {
+  L = layout(W, H);
+  const wallEl = $('#wall');
+  Object.assign(wallEl.style, { width: `${W}px`, height: `${H}px`, transformOrigin: `${W / 2}px ${H / 2}px` });
+  tiles = [];
+  const { cols, rows, gap, tw, th, top } = L.wall;
+  const cx0 = (cols - 1) / 2, cy0 = (rows - 1) / 2;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const i = r * cols + c;
+    const el = document.createElement('div');
+    el.className = 'tile';
+    const x = L.M + c * (tw + gap), y = top + r * (th + gap);
+    Object.assign(el.style, { width: `${tw}px`, height: `${th}px` });
+    el.innerHTML = chartSVG(Math.round(tw), Math.round(th), 101 + i * 17) + `<div class="tk">${TICKERS[i % TICKERS.length]} · ${TFS[i % TFS.length]}</div>`;
+    wallEl.appendChild(el);
+    const d = Math.hypot(c - cx0, (r - cy0) * 1.4) / Math.hypot(cx0, cy0 * 1.4);
+    tiles.push({ el, x, y, w: tw, h: th, cx: x + tw / 2, cy: y + th / 2, d });
+  }
+  // the wave starts before frame 0, so the first frame (the feed's thumbnail) already has
+  // the centre tiles mid-pop; it reaches the edges by 0.6 s
+  const dMin = Math.min(...tiles.map((tk) => tk.d));
+  tiles.forEach((tk) => { tk.tin = -0.1 + ((tk.d - dMin) / (1 - dMin)) * 0.7; });
+  Object.assign($('#dim').style, { width: `${W}px`, height: `${H}px` });
+  Object.assign($('#pings').style, { width: `${W}px`, height: `${H}px`, transformOrigin: `${W / 2}px ${H / 2}px` });
+  for (const id of ['#stats', '#cards', '#end']) Object.assign($(id).style, { width: `${W}px`, height: `${H}px` });
+
+  // pings land on tiles away from the headline, stacking down a tile when it repeats
+  const hb = { x0: L.hook.x - 20, x1: L.hook.x + (L.P ? 840 : 1300), y0: L.hook.y - 20, y1: L.hook.y + L.hook.lines.length * L.hook.size * 0.98 + 30 };
+  const free = tiles.filter((tk) => tk.x + tk.w < hb.x0 || tk.x > hb.x1 || tk.y + tk.h < hb.y0 || tk.y > hb.y1);
+  const pool = free.length ? free : tiles;
+  const used = new Map();
+  pingEls = tl.hook.pings.map((t, k) => {
+    const tile = pool[Math.floor(hash01(k, 29) * pool.length)];
+    const n = used.get(tile) || 0;
+    used.set(tile, n + 1);
+    const el = document.createElement('div');
+    el.className = 'ping';
+    el.innerHTML = BELL + `<span>${PINGS[k % PINGS.length]}</span>`;
+    $('#pings').appendChild(el);
+    const x = tile.x + 10 + (n % 2) * Math.min(60, tile.w * 0.2);
+    const y = tile.y + 40 + (n % 3) * 40;
+    return { el, t, x: Math.min(x, W - 220), y: Math.min(y, tile.y + tile.h - 38) };
+  });
+
+  heads = {
+    hook: lines($('#hookHead'), L.hook.lines, L.hook.size),
+    turn: lines($('#turnHead'), L.turn.lines, L.turn.size),
+    confirm: lines($('#confirmHead'), ['Escalate only', 'when context', 'agrees.'], L.side.size, 1),
+    decide: lines($('#decideHead'), ['One thesis,', 'not fifty', 'pings.'], L.side.size, 1),
+  };
+  $('#hookHead').style.transform = `translate(${L.hook.x}px, ${L.hook.y}px)`;
+  $('#turnHead').style.transform = `translate(${L.turn.x}px, ${L.turn.y}px)`;
+  // "Escalate only / when context / agrees.": green from "context" on, as the site does the punchline
+  heads.confirm[1].innerHTML = 'when <span class="g">context</span>';
+  heads.confirm[1].classList.remove('g');
+  heads.decide[0].classList.remove('g');
+
+  $('#kicker').style.fontSize = `${L.kicker.size}px`;
+  const kickers = [[tl.hook.kicker, tl.hook.kickerAt], [tl.cover.kicker, tl.cover.kickerAt], [tl.confirm.kicker, tl.confirm.kickerAt], [tl.decide.kicker, tl.decide.kickerAt]];
+  kickerTimes = kickers.map(([text, t], i) => ({ text, t, times: typeTimes(text, t, 46, 70 + i) }));
+
+  brandEl = $('#brand');
+  brandEl.innerHTML = `<div class="mk">${MARK}</div>${WORDMARK}`;
+  endLockup = $('#endLockup');
+  endLockup.innerHTML = `<div class="mk">${MARK}</div>${WORDMARK}`;
+
+  statEls = tl.cover.stats.map((s) => {
+    const el = document.createElement('div');
+    el.className = 'stat abs';
+    el.innerHTML = `<div class="line" style="overflow:hidden;padding-bottom:0.12em"><span class="big" style="display:inline-block">${s.big}</span>${L.stats.inline ? `<span class="small" style="margin-left:0.45em">${s.small}</span>` : ''}</div>${L.stats.inline ? '' : `<div class="small">${s.small}</div>`}`;
+    $('#stats').appendChild(el);
+    return el;
+  });
+
+  const CARD_FILES = ['eng-sweep', 'eng-ob', 'eng-fvg', 'eng-superengulfing'];
+  cardEls = CARD_FILES.map((f) => {
+    const el = document.createElement('div');
+    el.className = 'shot';
+    el.innerHTML = `<img src="../assets/screens/${f}.png" alt=""><div class="scanned"></div>`;
+    $('#cards').appendChild(el);
+    return el;
+  });
+
+  // masks over the confluence panel's rows, in the capture's own pixel grid (1881×1254)
+  const ROWS = [[170, 362], [362, 560], [560, 770], [770, 975], [990, 1240]];
+  const panel = $('#panel');
+  panelMasks = ROWS.map(([y0, y1]) => {
+    const m = document.createElement('div');
+    m.className = 'mask';
+    Object.assign(m.style, { left: `${(36 / 1881) * 100}%`, width: `${((1860 - 36) / 1881) * 100}%`, top: `${(y0 / 1254) * 100}%`, height: `${((y1 - y0) / 1254) * 100}%` });
+    panel.appendChild(m);
+    return m;
+  });
+  fireRing = document.createElement('div');
+  fireRing.className = 'ring';
+  Object.assign(fireRing.style, { left: `${(68 / 1881) * 100}%`, width: `${((1814 - 68) / 1881) * 100}%`, top: `${(788 / 1254) * 100}%`, height: `${((958 - 788) / 1254) * 100}%` });
+  panel.appendChild(fireRing);
+
+  wordEls = lines($('#words'), tl.close.words.map(([w]) => w), L.words.size, 2);
+  $('#words').style.transform = `translate(${L.words.x}px, ${L.words.y}px)`;
+
+  Object.assign($('#disc').style, { fontSize: `${L.disc.size}px`, width: `${L.disc.w}px` });
+}
+
+// ── helpers ─────────────────────────────────────────────────────────────────
+
+// headline lines rise behind their masks on their times and leave together
+function drawHead(spans, t, times, out) {
+  spans.forEach((sp, i) => {
+    const ti = times[Math.min(i, times.length - 1)] + (i >= times.length ? (i - times.length + 1) * 0.125 : 0);
+    const land = spring(t - ti, feel.headline);
+    const leave = ease.inCubic(progress(t, out + i * 0.04, 0.28));
+    sp.style.transform = `translateY(${(1 - land) * 112 - leave * 125}%)`;
+  });
+}
+// for vertical, three lines share two beats: the last two arrive an eighth apart
+const lineTimes = (times, n) => (n <= times.length ? times : [times[0], times[1] - 0.125, times[1] + 0.0]);
+
+function place(el, x, y, w, h) {
+  Object.assign(el.style, { width: `${w}px`, height: `${h}px`, transform: `translate(${x}px, ${y}px)` });
+}
+function placeMark(container, size, wordSize, t0, t, { candlesFirst = false, prebuilt = false } = {}) {
+  const mk = $('.mk', container);
+  Object.assign(mk.style, { width: `${size}px`, height: `${size}px`, marginRight: `${size * 0.24}px`, flex: 'none' });
+  $('.wordmark', container).style.fontSize = `${wordSize}px`;
+  const k = spring(t - t0, feel.panel);
+  // the three candles grow out of the line the chaos collapsed into, then the tile and letters arrive
+  [...mk.querySelectorAll('.m-c')].forEach((c, i) => {
+    const kc = spring(t - t0 - (candlesFirst ? -0.85 : 0) - i * 0.06, feel.ui);
+    c.style.transformBox = 'fill-box';
+    c.style.transformOrigin = '50% 100%';
+    c.style.transform = `scaleY(${clamp(kc, 0, 1.2)})`;
+  });
+  const kb = prebuilt ? 1 : clamp(spring(t - t0 - 0.05, feel.ui));
+  for (const sel of ['.m-bg', '.m-L', '.m-S']) mk.querySelector(sel).style.opacity = kb;
+  const wm = $('.wordmark', container);
+  wm.style.opacity = prebuilt ? 1 : clamp(progress(t, t0 + 0.12, 0.25));
+  wm.style.transform = `translateX(${prebuilt ? 0 : (1 - spring(t - t0 - 0.1, feel.panel)) * -30}px)`;
+  return k;
+}
+
+// ── the frame ───────────────────────────────────────────────────────────────
+
+function seek(t, { width: W, height: H }) {
+  const P = L.P;
+
+  // HOOK: the wall of charts — pops in from the center, slow push-in, dims under the words
+  const wallOn = t < tl.turn.collapse + 0.75;
+  vis($('#wall'), wallOn);
+  if (wallOn) {
+    const push = 1 + 0.07 * ease.inOutSine(progress(t, 0, tl.hook.freeze));
+    $('#wall').style.transform = `scale(${push})`;
+    $('#pings').style.transform = `scale(${push})`;
+    const mark = { x: L.brand.x + L.brand.mark / 2, y: L.brand.y + L.brand.mark / 2 };
+    tiles.forEach((tk, i) => {
+      const kin = clamp(spring(t - tk.tin, feel.ui), 0, 1.05);
+      const ain = clamp(progress(t, tk.tin, 0.12));
+      // collapse: every tile flies into the brand mark, the far ones last
+      const kc = clamp(spring(t - tl.turn.collapse - tk.d * 0.1, feel.ui), 0, 1);
+      const s = (0.6 + 0.4 * kin) * (1 - kc) ** 2;
+      const x = lerp(tk.x, mark.x - tk.w / 2, kc), y = lerp(tk.y, mark.y - tk.h / 2, kc);
+      vis(tk.el, ain > 0 && s > 0.01);
+      tk.el.style.opacity = ain;
+      tk.el.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
+    });
+  }
+  const dimA = t < tl.hook.freeze ? 0.92 * ease.outCubic(progress(t, tl.hook.dimAt, 0.35)) : 0.92 * (1 - ease.outCubic(progress(t, tl.hook.freeze, 0.3)));
+  vis($('#dim'), dimA > 0.001);
+  $('#dim').style.opacity = dimA;
+
+  // pings accumulate until the freeze-cut, then they are gone in one frame
+  const pingsOn = t >= tl.hook.pings[0] && t < tl.hook.freeze;
+  vis($('#pings'), pingsOn);
+  if (pingsOn) pingEls.forEach((p) => {
+    const on = t >= p.t;
+    vis(p.el, on);
+    if (!on) return;
+    const k = clamp(spring(t - p.t, feel.ui), 0, 1.04);
+    p.el.style.transform = `translate(${p.x}px, ${p.y + (1 - k) * 10}px) scale(${0.6 + 0.4 * k})`;
+    p.el.style.opacity = clamp(progress(t, p.t, 0.06));
+  });
+
+  // kickers: typed mono labels, one per chapter
+  const kk = kickerTimes.findLast((k) => t >= k.t);
+  const kickerEnds = [tl.hook.freeze, tl.cover.carouselOut, tl.confirm.out, tl.decide.out];
+  const ki = kk ? kickerTimes.indexOf(kk) : -1;
+  const kOn = ki >= 0 && t < kickerEnds[ki];
+  vis($('#kicker'), kOn);
+  if (kOn) {
+    $('.txt', $('#kicker')).textContent = typed(kk.text, t, kk.times);
+    const kx = ki === 0 ? L.hook.x : L.kicker.x;
+    const ky = ki === 0 ? L.hook.y - L.kicker.size * 2.4 : (P ? L.kicker.y : ki === 1 ? L.kicker.y : L.side.y - L.kicker.size * 2.4);
+    $('#kicker').style.transform = `translate(${kx}px, ${ky}px)`;
+    $('#kicker').style.opacity = 1 - ease.inCubic(progress(t, kickerEnds[ki] - 0.2, 0.2));
+  }
+
+  // headlines
+  const hookOn = t >= tl.hook.lines[0] - 0.05 && t < tl.hook.freeze;
+  vis($('#hookHead'), hookOn);
+  if (hookOn) drawHead(heads.hook, t, lineTimes(tl.hook.lines, heads.hook.length), Infinity);
+  const turnOn = t >= tl.turn.lines[0] - 0.05 && t < tl.turn.out + 0.45;
+  vis($('#turnHead'), turnOn);
+  if (turnOn) drawHead(heads.turn, t, lineTimes(tl.turn.lines, heads.turn.length), tl.turn.out);
+
+  // TURN: the brand lockup settles under the promise, then leaves with it
+  const brandOn = t >= tl.turn.collapse + 0.1 && t < tl.turn.out + 0.4;
+  vis(brandEl, brandOn);
+  if (brandOn) {
+    placeMark(brandEl, L.brand.mark, L.brand.word, tl.turn.brand, t, { candlesFirst: true });
+    const leave = ease.inCubic(progress(t, tl.turn.out, 0.35));
+    brandEl.style.transform = `translate(${L.brand.x}px, ${L.brand.y - leave * 40}px)`;
+    brandEl.style.opacity = 1 - leave;
+  }
+
+  // COVER: three stats on three beats, real engine cards, a beam reading each card
+  const coverOn = t >= tl.cover.kickerAt && t < tl.cover.carouselOut + 0.35;
+  vis($('#stats'), coverOn);
+  vis($('#cards'), coverOn);
+  const cardTimes = tl.cover.cards;
+  const out = ease.inCubic(progress(t, tl.cover.carouselOut, 0.3));
+  if (coverOn) {
+    statEls.forEach((el, i) => {
+      const s = tl.cover.stats[i];
+      const k = spring(t - s.t, feel.headline);
+      $('.big', el).style.fontSize = `${L.stats.big}px`;
+      el.querySelectorAll('.small').forEach((sm) => { sm.style.fontSize = `${L.stats.small}px`; sm.style.marginTop = L.stats.inline ? '0' : '10px'; });
+      $('.big', el).style.transform = `translateY(${(1 - k) * 110}%)`;
+      el.querySelectorAll('.small').forEach((sm) => { sm.style.opacity = clamp(progress(t, s.t + 0.1, 0.2)); });
+      el.style.transform = `translate(${L.stats.x + i * L.stats.dx}px, ${L.stats.y + i * L.stats.dy - out * 30}px)`;
+      el.style.opacity = 1 - out;
+      vis(el, t >= s.t - 0.02);
+    });
+    const { cw, ch, gap, y } = L.cards;
+    cardEls.forEach((el, i) => {
+      const tin = cardTimes[i];
+      const k = spring(t - tin, feel.panel);
+      let x;
+      if (P) {
+        // vertical: one big card at a time, swiped in on its beat
+        const slot = track(t, [[0, 0], ...cardTimes.slice(1).map((tc, j) => [tc, j + 1])], feel.panel);
+        x = W / 2 - cw / 2 + (i - slot) * (cw + gap);
+      } else {
+        x = L.M + i * (cw + gap) + (1 - k) * 160;
+      }
+      const yy = y + (P ? (1 - k) * 60 : (1 - k) * 90) - out * 40;
+      vis(el, t >= tin - 0.02);
+      place(el, x, yy, cw, ch);
+      el.style.borderRadius = `${(78 / 714) * cw}px`;
+      const focus = P ? 1 - 0.65 * clamp(Math.abs(i - track(t, [[0, 0], ...cardTimes.slice(1).map((tc, j) => [tc, j + 1])], feel.panel))) : 1;
+      el.style.opacity = clamp(progress(t, tin, 0.15)) * (1 - out) * focus;
+      // the card glows its outline for the moment the beam reads it
+      const sc = $('.scanned', el);
+      const read = windowed(t, tin + 0.12, tin + 0.5, 0.08);
+      Object.assign(sc.style, { width: '100%', height: '100%', borderRadius: `${(78 / 714) * cw}px`, opacity: read });
+    });
+    // the beam crosses the card that just landed
+    const ci = cardTimes.findLastIndex((tc) => t >= tc + 0.12 && t < tc + 0.5);
+    vis($('#beam'), ci >= 0 && out < 1);
+    if (ci >= 0) {
+      const tin = cardTimes[ci];
+      const u = ease.inOutSine(progress(t, tin + 0.12, 0.38));
+      const k = spring(t - tin, feel.panel);
+      const cx = P ? W / 2 - cw / 2 : L.M + ci * (cw + gap) + (1 - k) * 160;
+      Object.assign($('#beam').style, { height: `${ch * 0.33}px`, transform: `translate(${cx + 30 + u * (cw - 60)}px, ${y + ch * 0.04}px)`, opacity: 1 - out });
+    }
+  } else vis($('#beam'), false);
+
+  // CONFIRM: the real confluence panel; rows reveal on beats; FIRE on the downbeat
+  const confirmOn = t >= tl.confirm.panelIn && t < tl.decide.out + 0.4;
+  vis($('#confirmHead'), t >= tl.confirm.lines[0] - 0.05 && t < tl.confirm.out + 0.45);
+  if (t >= tl.confirm.lines[0] - 0.05) drawHead(heads.confirm, t, lineTimes(tl.confirm.lines, heads.confirm.length), tl.confirm.out);
+  Object.assign($('#confirmHead').style, { transform: `translate(${L.side.x}px, ${L.side.y}px)` });
+  vis($('#panel'), confirmOn);
+  if (confirmOn) {
+    const k = spring(t - tl.confirm.panelIn, feel.panel);
+    const back = spring(t - tl.decide.cardIn, feel.panel); // pushed back when the War Room card arrives
+    const leave = ease.inCubic(progress(t, tl.decide.out, 0.35));
+    const w = L.panel.w * (1 - 0.1 * back), h = L.panel.h * (1 - 0.1 * back);
+    const cx = L.panel.cx - (P ? 0 : 140 * back), cy = L.panel.cy + (1 - k) * 90 - (P ? 120 * back : 40 * back);
+    place($('#panel'), cx - w / 2, cy - h / 2, w, h);
+    $('#panel').style.borderRadius = `${(48 / 1881) * w}px`;
+    $('#panel').style.opacity = clamp(progress(t, tl.confirm.panelIn, 0.2)) * (1 - 0.65 * back) * (1 - leave);
+    const reveals = [...tl.confirm.rows, tl.confirm.fire, tl.confirm.footer];
+    panelMasks.forEach((mk, i) => {
+      const r = ease.outCubic(progress(t, reveals[i], 0.32));
+      vis(mk, r < 1);
+      mk.style.transform = `scaleX(${1 - r})`;
+    });
+    const f = windowed(t, tl.confirm.fire, tl.decide.cardIn + 0.2, 0.12);
+    const fk = spring(t - tl.confirm.fire, feel.ui);
+    vis(fireRing, f > 0);
+    fireRing.style.opacity = f;
+    fireRing.style.borderRadius = `${(80 / 1881) * w}px`;
+    fireRing.style.transform = `scale(${1 + 0.035 * (1 - fk)})`;
+  }
+
+  // DECIDE: the real War Room case slides over the panel
+  vis($('#decideHead'), t >= tl.decide.lines[0] - 0.05 && t < tl.decide.out + 0.45);
+  if (t >= tl.decide.lines[0] - 0.05) drawHead(heads.decide, t, lineTimes(tl.decide.lines, heads.decide.length), tl.decide.out);
+  Object.assign($('#decideHead').style, { transform: `translate(${L.side.x}px, ${L.side.y}px)` });
+  const warOn = t >= tl.decide.cardIn && t < tl.decide.out + 0.4;
+  vis($('#warroom'), warOn);
+  if (warOn) {
+    const k = spring(t - tl.decide.cardIn, feel.panel);
+    const leave = ease.inCubic(progress(t, tl.decide.out, 0.35));
+    const cx = L.war.cx + (P ? 0 : (1 - k) * 300), cy = L.war.cy + (P ? (1 - k) * 260 : 0) - leave * 30;
+    place($('#warroom'), cx - L.war.w / 2, cy - L.war.h / 2, L.war.w, L.war.h);
+    $('#warroom').style.borderRadius = `${(48 / 1881) * L.war.w}px`;
+    $('#warroom').style.opacity = clamp(progress(t, tl.decide.cardIn, 0.15)) * (1 - leave);
+  }
+
+  // CLOSE: three words on three beats, then a push: the words leave left by one
+  // frame width while the end card arrives from the right, so they never overlap
+  const pushAt = (u) => clamp(spring(u - (tl.close.end - 0.1), { freq: 1.6, damping: 0.95 }));
+  const push = pushAt(t);
+  // a 180° shutter: a box blur half a frame's travel long, as a Gaussian (σ ≈ 0.29 × length), horizontal only
+  const blur = Math.min(40, 0.15 * Math.abs(push - pushAt(t - 1 / tl.fps)) * W);
+  $('#mblurK').setAttribute('stdDeviation', `${blur.toFixed(2)} 0`);
+  for (const id of ['#words', '#end', '#disc']) $(id).style.filter = blur > 0.5 ? 'url(#mblur)' : 'none';
+  const wordsOn = t >= tl.close.words[0][1] - 0.05 && push < 0.999;
+  vis($('#words'), wordsOn);
+  if (wordsOn) {
+    drawHead(wordEls, t, tl.close.words.map(([, tw]) => tw), Infinity);
+    $('#words').style.transform = `translate(${L.words.x - push * W}px, ${L.words.y}px)`;
+  }
+
+  const endOn = t >= tl.close.end - 0.1;
+  vis($('#end'), endOn);
+  $('#end').style.transform = `translateX(${(1 - push) * W}px)`;
+  if (endOn) {
+    const E = L.end;
+    // the lockup rides in with the push already built; its three candles grow as it lands
+    placeMark(endLockup, E.mark, E.word, tl.close.end + 0.12, t, { prebuilt: true });
+    endLockup.style.width = `${W}px`;
+    endLockup.style.transform = `translate(0px, ${E.cy - E.mark / 2}px)`;
+    const tag = $('#tagline');
+    tag.style.fontSize = `${E.tag}px`;
+    tag.style.width = `${W}px`;
+    const tk = spring(t - tl.close.tagline, feel.headline);
+    tag.style.transform = `translate(0px, ${E.tagY + (1 - tk) * 26}px)`;
+    tag.style.opacity = clamp(progress(t, tl.close.tagline, 0.15));
+    const cta = $('#cta');
+    const ck = spring(t - tl.close.cta, feel.ui);
+    const press = t >= tl.close.press ? Math.exp(-(t - tl.close.press) * 12) : 0;
+    Object.assign(cta.style, { width: `${E.ctaW}px`, height: `${E.ctaH}px`, fontSize: `${E.ctaFont}px`,
+      transform: `translate(${W / 2 - E.ctaW / 2}px, ${E.ctaY}px) scale(${(0.85 + 0.15 * clamp(ck, 0, 1.05)) * (1 - 0.06 * press)})`, opacity: clamp(progress(t, tl.close.cta, 0.1)) });
+    const url = $('#url');
+    url.style.fontSize = `${E.url}px`;
+    url.style.width = `${W}px`;
+    url.style.transform = `translate(0px, ${E.urlY + (1 - spring(t - tl.close.url, feel.ui)) * 16}px)`;
+    url.style.opacity = clamp(progress(t, tl.close.url, 0.15));
+    const note = $('#note');
+    note.style.fontSize = `${E.note}px`;
+    note.style.width = `${W}px`;
+    note.style.transform = `translate(0px, ${E.noteY}px)`;
+    note.style.opacity = clamp(progress(t, tl.close.url + 0.15, 0.2));
+  }
+  const discOn = t >= tl.close.end;
+  vis($('#disc'), discOn);
+  if (discOn) {
+    $('#disc').style.transform = `translate(${L.disc.cx - L.disc.w / 2 + (1 - push) * W}px, ${L.disc.y}px)`;
+    $('#disc').style.opacity = clamp(progress(t, tl.close.end + 0.2, 0.3));
+  }
+
+  // the cursor presses Start free
+  const cur = $('#cursor');
+  const curOn = t >= tl.close.cursorIn;
+  vis(cur, curOn);
+  if (curOn) {
+    const E = L.end;
+    const target = [W / 2 + E.ctaW * 0.27, E.ctaY + E.ctaH * 0.76]; // below-right of the arrow, off the label
+    const [x, y] = cursorPath(t, [[tl.close.cursorIn, W * 0.98, H * 1.05], [tl.close.press - 0.55, ...target]]);
+    const press = t >= tl.close.press ? Math.exp(-(t - tl.close.press) * 16) : 0;
+    Object.assign(cur.style, { width: `${L.cursor}px`, height: `${L.cursor}px`, transform: `translate(${x - L.cursor * 0.18}px, ${y - L.cursor * 0.1}px) scale(${1 - 0.14 * press})` });
+  }
+}
+
+defineFilm({
+  duration: D,
+  fps: tl.fps,
+  formats: tl.formats,
+  timeline: { shots: tl.shots, cues: tl.cues },
+  audio: { score: './score.mjs' },
+  loop: false,
+  poster: 13.0, // FIRE on, every row and the footer revealed
+  setup,
+  seek,
+});
+</script>
+</body>
+</html>

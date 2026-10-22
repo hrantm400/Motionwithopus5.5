@@ -6,3 +6,4 @@ films/*/reviews/
 __pycache__/
 *.pyc
 .DS_Store
+films/*/assets/site/

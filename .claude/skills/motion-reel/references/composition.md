@@ -181,6 +181,25 @@ roughly a minute on 3 workers. Keep it that way:
   reported by render as contract violations.
 - **Tiny raster noise.** Determinism may report "raster noise only: 2 px, max Δ8":
   Chromium's compositor, invisible, fine. Dozens of pixels or more is a real leak.
+- **Text that wraps at every space.** Absolutely positioned children of an
+  absolutely positioned container with no width shrink to min-content: "600+ pairs"
+  breaks into two lines. Give the container the stage size, or `white-space: nowrap`.
+- **Descenders left behind by a masked exit.** A line that leaves its mask by 112 %
+  of its height still shows the bottom of its g, p and y for a frame or two; leave
+  by 125 %.
+- **An empty first frame.** On a feed the first frame is the thumbnail. Start the
+  opening motion before t = 0 (negative start times) so frame 0 already moves.
+- **A push that strobes.** A full-frame push in half a second peaks around 120 px
+  per frame at 1080p, and the eye sees the steps. Blur horizontally by the distance
+  travelled in a frame (a 180° shutter): an SVG `<filter id="mblur"><feGaussianBlur
+  stdDeviation="0 0"/></filter>`, then in `seek()` set `stdDeviation` to
+  `0.15 * Math.abs(x(t) - x(t - 1 / fps))` px and `filter: url(#mblur)` on the moving
+  layers (`none` below 0.5 px). It depends on `t` only, so it stays deterministic.
+- **Handoffs in the same space.** When the next chapter lands where the last one
+  stands, end the exit on the downbeat and start the entry on it; the cut is two or
+  three near-empty frames, never two headlines on top of each other.
+- **Small print on a phone.** A 16:9 film watched 360 px wide shrinks 25 px type to
+  under 5 px. Legal lines and badges: 30 px or more at 1080p.
 
 ## Footage and generate-then-trace
 

@@ -36,6 +36,7 @@ const args = parseArgs();
 checkTools();
 const film = resolveFilm(args._[0]);
 const rel = (p) => path.relative(ROOT, p);
+const AAC_RATE = '192k';
 const fmtT = (t) => `${String(Math.floor(t / 60)).padStart(2, '0')}:${(t % 60).toFixed(2).padStart(5, '0')}`;
 
 const server = await startServer();
@@ -132,7 +133,10 @@ try {
     await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', ...inputs.flatMap((i) => ['-i', i.file]),
       '-filter_complex', `${chains.join(';')};${mixer};[m]atrim=0:${info.duration}[out]`, '-map', '[out]', '-c:a', 'pcm_f32le', raw]);
     const lufs = Number(args.lufs ?? info.audio.lufs ?? -14);
-    const { err } = await run('ffmpeg', ['-hide_banner', '-i', raw, '-af', `loudnorm=I=${lufs}:TP=-1.5:LRA=11:print_format=json`, '-f', 'null', '-']);
+    // AAC adds about 1 dB of true peak on transients, so normalize to -2.5 dBTP and
+    // check the encoded result below: the delivered file lands under -1 dBTP
+    const TP = -2.5;
+    const { err } = await run('ffmpeg', ['-hide_banner', '-i', raw, '-af', `loudnorm=I=${lufs}:TP=${TP}:LRA=11:print_format=json`, '-f', 'null', '-']);
     const m = JSON.parse(err.slice(err.lastIndexOf('{'), err.lastIndexOf('}') + 1));
     const file = path.join(tmp, 'mix.wav');
     if (!Number.isFinite(Number(m.input_i))) {
@@ -140,11 +144,31 @@ try {
       console.log('! audio is silent — nothing to normalize');
     } else {
       await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', raw, '-af',
-        `loudnorm=I=${lufs}:TP=-1.5:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,aresample=48000`,
+        `loudnorm=I=${lufs}:TP=${TP}:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,aresample=48000`,
         '-c:a', 'pcm_s24le', file]);
+    }
+    // round trip through the delivery codec; if the encoded true peak still sits
+    // above the ceiling, pull the whole mix down by the excess
+    const ceiling = -1.2;
+    const tp = await encodedTruePeak(file, tmp);
+    if (tp !== null && tp > ceiling) {
+      const fixed = path.join(tmp, 'mix-fixed.wav');
+      const db = ceiling - tp - 0.1;
+      await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', file, '-af', `volume=${db.toFixed(2)}dB`, '-c:a', 'pcm_s24le', fixed]);
+      fs.renameSync(fixed, file);
+      console.log(`♪ encoded true peak ${tp} dBFS: mix pulled down ${db.toFixed(2)} dB`);
     }
     console.log(`♪ audio: ${inputs.map((i) => path.basename(i.file)).join(' + ')} → ${lufs} LUFS (was ${m.input_i}) in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
     return { file };
+  }
+
+  // true peak of a WAV after the same AAC encode the video step uses
+  async function encodedTruePeak(wav, dir) {
+    const m4a = path.join(dir, 'mix-check.m4a');
+    await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', wav, '-c:a', 'aac', '-b:a', AAC_RATE, m4a]);
+    const { err } = await run('ffmpeg', ['-hide_banner', '-nostats', '-i', m4a, '-af', 'ebur128=peak=true:framelog=quiet', '-f', 'null', '-']);
+    const mm = err.match(/True peak:\s+Peak:\s+(-?[\d.]+) dBFS/);
+    return mm ? Number(mm[1]) : null;
   }
 
   // ── video ─────────────────────────────────────────────────────────────────
@@ -174,7 +198,7 @@ try {
       '-f', 'image2pipe', '-framerate', String(fps), '-c:v', type === 'png' ? 'png' : 'mjpeg', '-i', '-'];
     if (audio) ffArgs.push('-ss', String(from), '-t', String(to - from), '-i', audio.file);
     ffArgs.push('-map', '0:v');
-    if (audio) ffArgs.push('-map', '1:a', '-c:a', 'aac', '-b:a', '192k');
+    if (audio) ffArgs.push('-map', '1:a', '-c:a', 'aac', '-b:a', AAC_RATE);
     ffArgs.push('-vf', toYuv,
       '-c:v', 'libx264', '-preset', String(args.preset || 'medium'), '-crf', String(args.crf || 18), '-tune', 'animation',
       '-profile:v', 'high', '-g', String(fps * 2), '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709',

@@ -64,6 +64,8 @@ property: "split the 2.0 s move into drop (2.0) then stretch (2.2)".
 - text in the vertical platform zones; type too small at 360 px
 - a cue with no sound, two sounds on one event, a mix with no build or release
 - anything that looks like a product screen but isn't one
+- an empty first frame: on a feed it is the thumbnail and the first impression
+- a poster caught mid-transition (a wipe half done, a fade at 40 %)
 
 ## The loop
 
@@ -72,6 +74,11 @@ property: "split the 2.0 s move into drop (2.0) then stretch (2.2)".
 3. patch those seconds; check with `render.mjs --stills 2.0,2.1,2.2` or `--from 1.5 --to 3`
 4. full render of the affected formats, review again (a new round folder)
 5. record the round in STATUS.md: lowest score, worst defect fixed
+
+Before signing off, look at a few frames at full size, the poster among them:
+`ffmpeg -ss 15.4 -i out/<slug>-16x9.mp4 -frames:v 1 frame.png`. A 320 px contact
+sheet hides a column cut off by a half-finished wipe, a cursor resting on the
+label it clicks, a beam running over a card's title.
 
 Stop at 8+ on every criterion in every format. After six rounds without getting
 there, deliver the best version and write what remains in STATUS.md, plainly.

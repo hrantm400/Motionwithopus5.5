@@ -251,7 +251,7 @@ try {
     audio.medianOffsetMs = offsets.length ? Math.round(median(offsets) * 1000) : null;
     audio.onsets = onsets.length;
     if (audio.lufs !== null && Math.abs(audio.lufs + 14) > 1.5) flags.push({ kind: 'loudness', start: 0, end: 0, row: 'audio', label: '', note: `Integrated loudness ${audio.lufs} LUFS; target is -14 ±1.` });
-    if (audio.truePeak !== null && audio.truePeak > -0.5) flags.push({ kind: 'peak', start: 0, end: 0, row: 'audio', label: '', note: `True peak ${audio.truePeak} dBFS — leave at least 1 dB of headroom.` });
+    if (audio.truePeak !== null && audio.truePeak > -1) flags.push({ kind: 'peak', start: 0, end: 0, row: 'audio', label: '', note: `True peak ${audio.truePeak} dBFS — leave at least 1 dB of headroom.` });
     for (const u of audio.unsynced.slice(0, 12)) flags.push({ kind: 'sync', start: u.t, end: u.t + 0.05, row: 'audio', label: '', note: `${u.label} at ${fmtT(u.t)} has no sound within 80 ms${u.nearestOnsetMs !== null ? ` (nearest onset ${u.nearestOnsetMs > 0 ? '+' : ''}${u.nearestOnsetMs} ms)` : ''}.` });
   } else {
     flags.push({ kind: 'audio', start: 0, end: 0, row: 'audio', label: '', note: 'The export has no audio stream. Silent films feel unfinished; add a score (score.mjs) or a supplied track.' });
